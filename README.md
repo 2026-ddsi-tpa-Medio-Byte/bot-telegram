@@ -14,7 +14,7 @@ Variables de entorno (o editar `src/main/resources/application.properties`):
 
 | Variable | Default | Descripción |
 |----------|---------|-------------|
-| `TELEGRAM_BOT_TOKEN` | *(vacío)* | Token de BotFather. **Sin esto el bot no arranca.** |
+| `TELEGRAM_BOT_TOKEN` | 8857479482:AAFdhnfyvxzMVT8dVf8oGuhgM81JwQT3r90 | Token de BotFather. **Sin esto el bot no arranca.** |
 | `DONADORES_URL` | `http://localhost:8080` | URL base del módulo Donadores (local o Render). |
 
 ## Cómo correrlo
