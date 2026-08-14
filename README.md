@@ -18,13 +18,25 @@ Variables de entorno (o editar `src/main/resources/application.properties`):
 | `DONADORES_URL` | `http://localhost:8080` | URL base del módulo Donadores (local o Render). |
 
 ## Cómo correrlo
-```bash
-# PowerShell
+
+Desde la carpeta del proyecto, en **PowerShell** (no en CMD):
+
+```powershell
+cd "C:\Users\julia\Desktop\TP DDSI\TelegramBot"
 $env:TELEGRAM_BOT_TOKEN = "123456:ABC..."
-$env:DONADORES_URL = "https://entrega-2-joaqulopez.onrender.com"
+$env:DONADORES_URL = "https://donadoresyentidadesv2.onrender.com"
 mvn spring-boot:run
 ```
-Luego, en Telegram, buscá tu bot y mandá `/start`.
+
+En CMD la sintaxis es distinta (`set VARIABLE=valor`, sin comillas y una por línea).
+
+El arranque es correcto cuando aparece esto y **la terminal queda escuchando**, sin volver al prompt:
+
+```
+Bot de Telegram iniciado (long-polling). Escuchando mensajes...
+```
+
+Luego, en Telegram, buscá tu bot y mandá `/start`. Para detenerlo, Ctrl+C.
 
 ## Comandos
 Primero `/start` y elegí rol: `/soy_donador` o `/soy_admin`.
