@@ -36,10 +36,14 @@ public class DonaTrackBot {
               + "Obtené un token de @BotFather, configurá TELEGRAM_BOT_TOKEN y reiniciá.");
       return;
     }
+    // No daemon: este hilo es el que mantiene viva la aplicación. La app no levanta
+    // servidor web (web-application-type=none), así que con un hilo daemon el proceso
+    // terminaría apenas arranca y el bot dejaría de escuchar.
     Thread t = new Thread(this::pollLoop, "telegram-poll");
-    t.setDaemon(true);
+    t.setDaemon(false);
     t.start();
-    log.info("Bot de Telegram iniciado (long-polling).");
+    log.info("Bot de Telegram iniciado (long-polling). Escuchando mensajes...");
+    log.info("Para detenerlo: Ctrl+C");
   }
 
   public void stop() {
