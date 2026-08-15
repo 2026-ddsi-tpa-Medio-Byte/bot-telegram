@@ -45,13 +45,36 @@ public class TelegramClient {
     }
   }
 
+  /**
+   * Envía el mensaje interpretando Markdown, para que los *asteriscos* salgan en negrita.
+   *
+   * <p>Telegram rechaza el mensaje entero si el Markdown queda mal balanceado, y eso puede pasar
+   * con datos que escribe el usuario (un guion bajo en un mail, por ejemplo). Por eso, si falla,
+   * se reintenta sin formato: mejor un mensaje feo que ningún mensaje.
+   */
   public void sendMessage(long chatId, String text) {
+    if (enviar(chatId, text, true)) {
+      return;
+    }
+    enviar(chatId, text, false);
+  }
+
+  private boolean enviar(long chatId, String text, boolean conFormato) {
     String url = apiBase() + "/sendMessage";
-    Map<String, Object> body = Map.of("chat_id", chatId, "text", text);
+    Map<String, Object> body =
+        conFormato
+            ? Map.of("chat_id", chatId, "text", text, "parse_mode", "Markdown")
+            : Map.of("chat_id", chatId, "text", text);
     try {
       rest.postForObject(url, body, String.class);
+      return true;
     } catch (Exception e) {
-      log.warn("Error al enviar mensaje a chat {}: {}", chatId, e.getMessage());
+      if (conFormato) {
+        log.debug("Markdown rechazado para el chat {}, reintento sin formato", chatId);
+      } else {
+        log.warn("Error al enviar mensaje a chat {}: {}", chatId, e.getMessage());
+      }
+      return false;
     }
   }
 }

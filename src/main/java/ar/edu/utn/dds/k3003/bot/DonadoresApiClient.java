@@ -38,6 +38,35 @@ public class DonadoresApiClient {
     return post("/donadores", body, "Donador registrado");
   }
 
+  /** Igual que el anterior pero devuelve el JSON tal cual, para poder formatearlo o leerle el id. */
+  public String registrarDonadorRaw(
+      String nombre, String apellido, int edad, String email, String documento, String domicilio) {
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("nombre", nombre);
+    body.put("apellido", apellido);
+    body.put("edad", edad);
+    body.put("email", email);
+    body.put("nroDocumento", documento);
+    body.put("domicilio", domicilio);
+    return postRaw("/donadores", body);
+  }
+
+  public String puedeDonar(String id) {
+    return get("/donadores/" + id + "/puede-donar");
+  }
+
+  public String quejasDe(String id) {
+    return get("/donadores/" + id + "/quejas");
+  }
+
+  public String cambiarEstadoDonador(String id, String estado) {
+    return patchRaw("/donadores/" + id + "/estado", Map.of("estado", estado));
+  }
+
+  public String cambiarCategoriaDonador(String id, String categoria) {
+    return patchRaw("/donadores/" + id + "/categoria", Map.of("categoria", categoria));
+  }
+
   public String estadisticasDonador(String id) {
     return get("/donadores/" + id + "/estadisticas");
   }
@@ -53,22 +82,34 @@ public class DonadoresApiClient {
   // ── Entidades ────────────────────────────────────────────────────────────────
 
   public String crearEntidad(String razonSocial, String domicilio, String telefono, String correo) {
-    Map<String, Object> body = new LinkedHashMap<>();
-    body.put("razonSocial", razonSocial);
-    body.put("domicilio", domicilio);
-    body.put("telefono", telefono);
-    body.put("correo", correo);
-    return post("/entidades", body, "Entidad creada");
+    return post("/entidades", cuerpoEntidad(razonSocial, domicilio, telefono, correo),
+        "Entidad creada");
+  }
+
+  public String crearEntidadRaw(
+      String razonSocial, String domicilio, String telefono, String correo) {
+    return postRaw("/entidades", cuerpoEntidad(razonSocial, domicilio, telefono, correo));
   }
 
   public String editarEntidad(
       String id, String razonSocial, String domicilio, String telefono, String correo) {
+    return put("/entidades/" + id, cuerpoEntidad(razonSocial, domicilio, telefono, correo),
+        "Entidad actualizada");
+  }
+
+  public String editarEntidadRaw(
+      String id, String razonSocial, String domicilio, String telefono, String correo) {
+    return putRaw("/entidades/" + id, cuerpoEntidad(razonSocial, domicilio, telefono, correo));
+  }
+
+  private Map<String, Object> cuerpoEntidad(
+      String razonSocial, String domicilio, String telefono, String correo) {
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("razonSocial", razonSocial);
     body.put("domicilio", domicilio);
     body.put("telefono", telefono);
     body.put("correo", correo);
-    return put("/entidades/" + id, body, "Entidad actualizada");
+    return body;
   }
 
   public String buscarEntidad(String id) {
@@ -88,14 +129,53 @@ public class DonadoresApiClient {
       int cantidadObjetivo,
       String productoID,
       String tipo) {
+    return post(
+        "/necesidades",
+        cuerpoNecesidad(entidadID, urgencia, descripcion, cantidadObjetivo, productoID, tipo),
+        "Necesidad creada");
+  }
+
+  public String altaNecesidadRaw(
+      String entidadID,
+      int urgencia,
+      String descripcion,
+      int cantidadObjetivo,
+      String productoID,
+      String tipo) {
+    return postRaw(
+        "/necesidades",
+        cuerpoNecesidad(entidadID, urgencia, descripcion, cantidadObjetivo, productoID, tipo));
+  }
+
+  public String modificarNecesidadRaw(
+      String id,
+      int urgencia,
+      String descripcion,
+      int cantidadObjetivo,
+      String productoID,
+      String tipo) {
+    return putRaw(
+        "/necesidades/" + id,
+        cuerpoNecesidad(null, urgencia, descripcion, cantidadObjetivo, productoID, tipo));
+  }
+
+  private Map<String, Object> cuerpoNecesidad(
+      String entidadID,
+      int urgencia,
+      String descripcion,
+      int cantidadObjetivo,
+      String productoID,
+      String tipo) {
     Map<String, Object> body = new LinkedHashMap<>();
-    body.put("entidadID", entidadID);
+    if (entidadID != null) {
+      body.put("entidadID", entidadID);
+    }
     body.put("nivelDeUrgencia", urgencia);
     body.put("descripcion", descripcion);
     body.put("cantidadObjetivo", cantidadObjetivo);
     body.put("productoSolicitadoID", productoID);
     body.put("tipo", tipo);
-    return post("/necesidades", body, "Necesidad creada");
+    return body;
   }
 
   public String buscarNecesidad(String id) {
@@ -136,9 +216,43 @@ public class DonadoresApiClient {
   }
 
   private String post(String path, Object body, String okMsg) {
+    return okMsg + ": " + postRaw(path, body);
+  }
+
+  /** Devuelve el JSON sin adornos, para poder formatearlo o leerle el id. */
+  private String postRaw(String path, Object body) {
     try {
-      String resp = rest.postForObject(baseUrl + path, body, String.class);
-      return okMsg + ": " + resp;
+      return rest.postForObject(baseUrl + path, body, String.class);
+    } catch (HttpStatusCodeException e) {
+      throw new RuntimeException(traducir(e));
+    } catch (ResourceAccessException e) {
+      throw new RuntimeException(sinConexion());
+    }
+  }
+
+  private String putRaw(String path, Object body) {
+    try {
+      return rest.exchange(
+              baseUrl + path,
+              org.springframework.http.HttpMethod.PUT,
+              new org.springframework.http.HttpEntity<>(body),
+              String.class)
+          .getBody();
+    } catch (HttpStatusCodeException e) {
+      throw new RuntimeException(traducir(e));
+    } catch (ResourceAccessException e) {
+      throw new RuntimeException(sinConexion());
+    }
+  }
+
+  private String patchRaw(String path, Object body) {
+    try {
+      return rest.exchange(
+              baseUrl + path,
+              org.springframework.http.HttpMethod.PATCH,
+              new org.springframework.http.HttpEntity<>(body),
+              String.class)
+          .getBody();
     } catch (HttpStatusCodeException e) {
       throw new RuntimeException(traducir(e));
     } catch (ResourceAccessException e) {
