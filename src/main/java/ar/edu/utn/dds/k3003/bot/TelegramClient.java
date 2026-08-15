@@ -46,35 +46,42 @@ public class TelegramClient {
   }
 
   /**
-   * Envía el mensaje interpretando Markdown, para que los *asteriscos* salgan en negrita.
+   * Envía el mensaje interpretando HTML, para que {@code <b>} salga en negrita.
    *
-   * <p>Telegram rechaza el mensaje entero si el Markdown queda mal balanceado, y eso puede pasar
-   * con datos que escribe el usuario (un guion bajo en un mail, por ejemplo). Por eso, si falla,
-   * se reintenta sin formato: mejor un mensaje feo que ningún mensaje.
+   * <p>Se usa HTML y no Markdown por los comandos: en Markdown el guion bajo abre cursiva, así
+   * que un menú con /soy_donador y /soy_admin terminaba mostrando «/soydonador» sin el guion.
+   * El usuario copiaba eso y el bot no lo reconocía. En HTML el guion bajo no significa nada.
+   *
+   * <p>Si el HTML llegara mal formado Telegram rechaza el mensaje entero, así que se reintenta
+   * sin formato: mejor un mensaje feo que ningún mensaje.
    */
   public void sendMessage(long chatId, String text) {
     if (enviar(chatId, text, true)) {
       return;
     }
-    enviar(chatId, text, false);
+    enviar(chatId, sinEtiquetas(text), false);
   }
 
   private boolean enviar(long chatId, String text, boolean conFormato) {
     String url = apiBase() + "/sendMessage";
     Map<String, Object> body =
         conFormato
-            ? Map.of("chat_id", chatId, "text", text, "parse_mode", "Markdown")
+            ? Map.of("chat_id", chatId, "text", text, "parse_mode", "HTML")
             : Map.of("chat_id", chatId, "text", text);
     try {
       rest.postForObject(url, body, String.class);
       return true;
     } catch (Exception e) {
       if (conFormato) {
-        log.debug("Markdown rechazado para el chat {}, reintento sin formato", chatId);
+        log.debug("HTML rechazado para el chat {}, reintento sin formato", chatId);
       } else {
         log.warn("Error al enviar mensaje a chat {}: {}", chatId, e.getMessage());
       }
       return false;
     }
+  }
+
+  private String sinEtiquetas(String text) {
+    return text.replaceAll("</?[bi]>", "");
   }
 }

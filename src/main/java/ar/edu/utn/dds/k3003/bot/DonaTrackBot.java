@@ -123,7 +123,7 @@ public class DonaTrackBot {
           String nombre = d == null ? id : d.path("nombre").asText(id);
           s.identificar(id, nombre);
           telegram.sendMessage(
-              chatId, "👋 Hola *" + nombre + "*, entraste.\n\n" + menuDonadorAdentro(s));
+              chatId, "👋 Hola <b>" + nombre + "</b>, entraste.\n\n" + menuDonadorAdentro(s));
         }
         case "/registrarse" -> {
           String[] p =
@@ -135,11 +135,11 @@ public class DonaTrackBot {
             s.identificar(id, p[0]);
             telegram.sendMessage(
                 chatId,
-                "🎉 Listo *"
+                "🎉 Listo <b>"
                     + p[0]
-                    + "*, quedaste registrado con el número *"
+                    + "</b>, quedaste registrado con el número <b>"
                     + id
-                    + "*.\n"
+                    + "</b>.\n"
                     + "Anotátelo: con eso entrás la próxima vez con /entrar "
                     + id
                     + "\n\n"
@@ -276,7 +276,7 @@ public class DonaTrackBot {
 
   private String bienvenida() {
     return """
-        👋 *Bienvenido a DonaTrack*
+        👋 <b>Bienvenido a DonaTrack</b>
 
         Un sistema para que lo que se dona llegue a donde hace falta.
 
@@ -291,7 +291,7 @@ public class DonaTrackBot {
 
   private String puertaDonador() {
     return """
-        🧑 *Modo donador*
+        🧑 <b>Modo donador</b>
 
         ¿Ya estás registrado?
 
@@ -328,21 +328,21 @@ public class DonaTrackBot {
 
   private String menuAdmin() {
     return """
-        🛠️ *Modo administrador*
+        🛠️ <b>Modo administrador</b>
 
-        *Entidades*
+        <b>Entidades</b>
         /crearentidad razonSocial;domicilio;telefono;correo
         /editarentidad id;razonSocial;domicilio;telefono;correo
         /entidad <número>
         /entidades
 
-        *Necesidades*
+        <b>Necesidades</b>
         /altanecesidad entidadID;urgencia;descripcion;cantidadObjetivo;productoID;tipo
         /modificarnecesidad id;urgencia;descripcion;cantidadObjetivo;productoID;tipo
         /necesidad <número>
         /borrarnecesidad <número>
 
-        *Donadores*
+        <b>Donadores</b>
         /donadores — todos
         /donador <número> — uno
         /estadisticas <número>
@@ -350,7 +350,7 @@ public class DonaTrackBot {
         /estadodonador id;VERIFICADO|SOSPECHOSO|BANEADO
         /categoriadonador id;categoria
 
-        *Catálogo*
+        <b>Catálogo</b>
         /productos
 
         🚪 /salir""";
@@ -361,7 +361,7 @@ public class DonaTrackBot {
     if (arr == null || !arr.isArray() || arr.isEmpty()) {
       return "No hay productos cargados todavía.";
     }
-    StringBuilder sb = new StringBuilder("📦 *Productos que se pueden donar*\n");
+    StringBuilder sb = new StringBuilder("📦 <b>Productos que se pueden donar</b>\n");
     for (JsonNode p : arr) {
       sb.append("\n• nº ")
           .append(p.path("id").asText())
@@ -392,7 +392,8 @@ public class DonaTrackBot {
     if (arr.isEmpty()) {
       return "Ese donador no tiene ninguna queja. 👍";
     }
-    StringBuilder sb = new StringBuilder("⚠️ *Quejas del donador " + donadorId + "* (" + arr.size() + ")\n");
+    StringBuilder sb =
+        new StringBuilder("⚠️ <b>Quejas del donador " + donadorId + "</b> (" + arr.size() + ")\n");
     for (JsonNode q : arr) {
       sb.append("\n• donación nº ")
           .append(q.path("donacionID").asText("—"))

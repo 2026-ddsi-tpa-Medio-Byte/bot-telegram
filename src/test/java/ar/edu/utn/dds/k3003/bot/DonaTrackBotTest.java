@@ -2,6 +2,7 @@ package ar.edu.utn.dds.k3003.bot;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
@@ -59,7 +60,7 @@ class DonaTrackBotTest {
 
     bot.handle(1L, "/entrar 1");
 
-    verify(telegram).sendMessage(eq(1L), contains("Hola *Ana*"));
+    verify(telegram).sendMessage(eq(1L), contains("Hola <b>Ana</b>"));
   }
 
   @Test
@@ -70,7 +71,7 @@ class DonaTrackBotTest {
 
     bot.handle(1L, "/registrarse Juan;Perez;30;j@x.com;123;Calle 5");
 
-    verify(telegram).sendMessage(eq(1L), contains("número *7*"));
+    verify(telegram).sendMessage(eq(1L), contains("número <b>7</b>"));
   }
 
   // ── Sesión ─────────────────────────────────────────────────────────────────
@@ -208,5 +209,41 @@ class DonaTrackBotTest {
   void desconocido() {
     bot.handle(1L, "/cualquiercosa");
     verify(telegram).sendMessage(eq(1L), contains("/help"));
+  }
+
+  @Test
+  @DisplayName("Los menús no usan asteriscos: en Markdown el guion bajo comía /soy_donador")
+  void sinMarkdownEnLosMenus() {
+    // Con parse_mode Markdown, el _ de /soy_donador abría cursiva y Telegram mostraba
+    // «/soydonador» sin el guion. El usuario copiaba eso y el bot no lo reconocía.
+    org.mockito.ArgumentCaptor<String> captor =
+        org.mockito.ArgumentCaptor.forClass(String.class);
+
+    bot.handle(1L, "/start");
+    bot.handle(1L, "/soy_donador");
+    bot.handle(2L, "/soy_admin");
+
+    verify(telegram, org.mockito.Mockito.atLeast(3)).sendMessage(anyLong(), captor.capture());
+
+    for (String mensaje : captor.getAllValues()) {
+      org.junit.jupiter.api.Assertions.assertFalse(
+          mensaje.contains("*"),
+          "ningún mensaje puede llevar asteriscos de Markdown, rompen los comandos con _");
+    }
+  }
+
+  @Test
+  @DisplayName("Los comandos con guion bajo llegan enteros al usuario")
+  void comandosConGuionBajoIntactos() {
+    org.mockito.ArgumentCaptor<String> captor =
+        org.mockito.ArgumentCaptor.forClass(String.class);
+
+    bot.handle(1L, "/start");
+
+    verify(telegram).sendMessage(anyLong(), captor.capture());
+    String bienvenida = captor.getValue();
+
+    org.junit.jupiter.api.Assertions.assertTrue(bienvenida.contains("/soy_donador"));
+    org.junit.jupiter.api.Assertions.assertTrue(bienvenida.contains("/soy_admin"));
   }
 }

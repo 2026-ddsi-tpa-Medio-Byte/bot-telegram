@@ -31,11 +31,11 @@ final class Formato {
     if (n == null) {
       return json;
     }
-    return "👤 *"
+    return "👤 <b>"
         + txt(n, "nombre")
         + " "
         + txt(n, "apellido")
-        + "*\n"
+        + "</b>\n"
         + "Nº "
         + txt(n, "id")
         + " · documento "
@@ -58,7 +58,7 @@ final class Formato {
     if (arr.isEmpty()) {
       return "No hay donadores registrados todavía.";
     }
-    StringBuilder sb = new StringBuilder("👥 *Donadores* (" + arr.size() + ")\n");
+    StringBuilder sb = new StringBuilder("👥 <b>Donadores</b> (" + arr.size() + ")\n");
     for (JsonNode n : arr) {
       sb.append("\n• ")
           .append(txt(n, "nombre"))
@@ -83,11 +83,11 @@ final class Formato {
     int cuantas = insignias.isArray() ? insignias.size() : 0;
 
     StringBuilder sb = new StringBuilder();
-    sb.append("📊 *")
+    sb.append("📊 <b>")
         .append(txt(n, "nombre"))
         .append(" ")
         .append(txt(n, "apellido"))
-        .append("*\n\n")
+        .append("</b>\n\n")
         .append(estadoConIcono(n.path("estado").asText("")))
         .append("\n🏅 Categoría: ")
         .append(txt(n, "categoria"));
@@ -115,9 +115,9 @@ final class Formato {
     if (n == null) {
       return json;
     }
-    return "🏢 *"
+    return "🏢 <b>"
         + txt(n, "razonSocial")
-        + "*  —  nº "
+        + "</b>  —  nº "
         + txt(n, "id")
         + "\n📍 "
         + txt(n, "domicilio")
@@ -135,7 +135,7 @@ final class Formato {
     if (arr.isEmpty()) {
       return "No hay entidades cargadas todavía.";
     }
-    StringBuilder sb = new StringBuilder("🏢 *Entidades* (" + arr.size() + ")\n");
+    StringBuilder sb = new StringBuilder("🏢 <b>Entidades</b> (" + arr.size() + ")\n");
     for (JsonNode n : arr) {
       sb.append("\n• ")
           .append(txt(n, "razonSocial"))
@@ -157,9 +157,9 @@ final class Formato {
     int objetivo = n.path("cantidadObjetivo").asInt(0);
     int actual = n.path("cantidadActual").asInt(0);
 
-    return "📋 *Necesidad nº "
+    return "📋 <b>Necesidad nº "
         + txt(n, "id")
-        + "*\n"
+        + "</b>\n"
         + txt(n, "descripcion")
         + "\n\n"
         + barra(actual, objetivo)
@@ -185,9 +185,9 @@ final class Formato {
     if (n == null) {
       return json;
     }
-    return "📦 *Donación nº "
+    return "📦 <b>Donación nº "
         + txt(n, "id")
-        + "*\n"
+        + "</b>\n"
         + txt(n, "descripcion")
         + "\n\n"
         + n.path("cantidad").asInt(0)
@@ -207,7 +207,7 @@ final class Formato {
     if (arr.isEmpty()) {
       return "Todavía no hiciste ninguna donación.";
     }
-    StringBuilder sb = new StringBuilder("📦 *Tus donaciones* (" + arr.size() + ")\n");
+    StringBuilder sb = new StringBuilder("📦 <b>Tus donaciones</b> (" + arr.size() + ")\n");
     for (JsonNode n : arr) {
       sb.append("\n• nº ")
           .append(txt(n, "id"))
@@ -221,9 +221,19 @@ final class Formato {
 
   // ── Piezas ─────────────────────────────────────────────────────────────────
 
+  /**
+   * Lee un campo y lo deja listo para meter en el HTML del mensaje.
+   *
+   * <p>Escapa lo que Telegram interpretaría como etiqueta: si alguien registra una entidad
+   * llamada «Pan &amp; Circo», sin escapar el mensaje entero sería rechazado.
+   */
   private static String txt(JsonNode n, String campo) {
     String v = n.path(campo).asText("");
-    return v.isBlank() || "null".equals(v) ? "—" : v;
+    return v.isBlank() || "null".equals(v) ? "—" : esc(v);
+  }
+
+  private static String esc(String s) {
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
   }
 
   private static String iconoEstado(String estado) {
