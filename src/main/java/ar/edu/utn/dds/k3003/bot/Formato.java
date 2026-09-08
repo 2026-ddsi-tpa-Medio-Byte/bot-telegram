@@ -219,6 +219,100 @@ final class Formato {
     return sb.toString();
   }
 
+  // ── Logística ──────────────────────────────────────────────────────────────
+
+  static String listaDepositos(String json) {
+    JsonNode arr = parsear(json);
+    if (arr == null || !arr.isArray()) {
+      return json;
+    }
+    if (arr.isEmpty()) {
+      return "No hay depósitos registrados todavía.";
+    }
+    StringBuilder sb = new StringBuilder("🏬 <b>Depósitos</b> (" + arr.size() + ")\n");
+    for (JsonNode n : arr) {
+      sb.append("\n• <b>")
+          .append(txt(n, "id"))
+          .append("</b>")
+          .append(n.has("nombre") && !n.path("nombre").asText("").isBlank() ? " — " + txt(n, "nombre") : "")
+          .append("\n  📍 ")
+          .append(txt(n, "direccion"))
+          .append("\n  📦 Capacidad: ")
+          .append(n.path("capacidadMaxima").asInt(0));
+    }
+    return sb.toString();
+  }
+
+  static String stock(String productoId, String json) {
+    JsonNode n = parsear(json);
+    int disponible = 0;
+    if (n != null) {
+      if (n.has("disponible")) {
+        disponible = n.path("disponible").asInt(0);
+      } else if (n.isNumber()) {
+        disponible = n.asInt(0);
+      } else if (n.has("cantidad")) {
+        disponible = n.path("cantidad").asInt(0);
+      } else if (n.has("stock")) {
+        disponible = n.path("stock").asInt(0);
+      }
+    } else {
+      try {
+        disponible = Integer.parseInt(json.trim());
+      } catch (Exception ignored) {
+        return json;
+      }
+    }
+    return "📦 <b>Stock de producto nº " + esc(productoId) + "</b>\n"
+        + "Disponibles en depósito: <b>" + disponible + "</b> unidades";
+  }
+
+  // ── Incentivos ─────────────────────────────────────────────────────────────
+
+  static String listaInsignias(String json) {
+    JsonNode arr = parsear(json);
+    if (arr == null || !arr.isArray()) {
+      return json;
+    }
+    if (arr.isEmpty()) {
+      return "No hay insignias cargadas en Incentivos todavía.";
+    }
+    StringBuilder sb = new StringBuilder("🏅 <b>Catálogo de Insignias</b> (" + arr.size() + ")\n");
+    for (JsonNode n : arr) {
+      sb.append("\n• <b>")
+          .append(txt(n, "nombre"))
+          .append("</b> (ID: ")
+          .append(txt(n, "id"))
+          .append(")\n  ")
+          .append(txt(n, "descripcion"));
+    }
+    return sb.toString();
+  }
+
+  static String listaMisiones(String json) {
+    JsonNode arr = parsear(json);
+    if (arr == null || !arr.isArray()) {
+      return json;
+    }
+    if (arr.isEmpty()) {
+      return "No hay misiones cargadas en Incentivos todavía.";
+    }
+    StringBuilder sb = new StringBuilder("🎯 <b>Misiones de Incentivos</b> (" + arr.size() + ")\n");
+    for (JsonNode n : arr) {
+      sb.append("\n• <b>")
+          .append(txt(n, "nombre"))
+          .append("</b> (ID: ")
+          .append(txt(n, "id"))
+          .append(")\n  🏅 Insignia: ")
+          .append(txt(n, "insigniaID"))
+          .append("\n  📈 Nivel: ")
+          .append(txt(n, "categoriaInicio"))
+          .append(" ➔ ")
+          .append(txt(n, "categoriaFin"));
+    }
+    return sb.toString();
+  }
+
   // ── Piezas ─────────────────────────────────────────────────────────────────
 
   /**

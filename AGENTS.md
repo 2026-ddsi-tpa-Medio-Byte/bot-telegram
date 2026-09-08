@@ -32,6 +32,8 @@ Formato               convierte el JSON de la API en texto legible
 TelegramClient        getUpdates y sendMessage
 DonadoresApiClient    cliente del módulo Donadores
 DonacionesApiClient   cliente del módulo Donaciones
+LogisticaApiClient    cliente del módulo Logística
+IncentivosApiClient   cliente del módulo Incentivos
 ```
 
 ## Dos decisiones que importan
@@ -51,4 +53,5 @@ por chat.
 mvn test
 ```
 
-28 tests, 0 fallos. Incluyen que los comandos con guion bajo lleguen enteros al usuario.
+40 tests, 0 fallos. Incluyen que los comandos con guion bajo lleguen enteros al usuario y la
+integración con los cuatro microservicios.

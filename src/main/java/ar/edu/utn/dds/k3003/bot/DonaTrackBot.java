@@ -25,6 +25,8 @@ public class DonaTrackBot {
   private final TelegramClient telegram;
   private final DonadoresApiClient api;
   private final DonacionesApiClient donaciones;
+  private final LogisticaApiClient logistica;
+  private final IncentivosApiClient incentivos;
   private final String depositoPorDefecto;
 
   private final Map<Long, Sesion> sesiones = new ConcurrentHashMap<>();
@@ -35,10 +37,14 @@ public class DonaTrackBot {
       TelegramClient telegram,
       DonadoresApiClient api,
       DonacionesApiClient donaciones,
+      LogisticaApiClient logistica,
+      IncentivosApiClient incentivos,
       @Value("${deposito.default:DEP-UTN-01}") String depositoPorDefecto) {
     this.telegram = telegram;
     this.api = api;
     this.donaciones = donaciones;
+    this.logistica = logistica;
+    this.incentivos = incentivos;
     this.depositoPorDefecto = depositoPorDefecto;
   }
 
@@ -265,6 +271,34 @@ public class DonaTrackBot {
               chatId, quejas(requerido(args, "/quejas <número de donador>")));
         }
 
+        // ── Logística ───────────────────────────────────────────────────────
+        case "/depositos" ->
+            telegram.sendMessage(chatId, Formato.listaDepositos(logistica.listarDepositos()));
+        case "/stock" -> {
+          String prodId = requerido(args, "/stock <productoID>");
+          telegram.sendMessage(chatId, Formato.stock(prodId, logistica.consultarStock(prodId)));
+        }
+        case "/reportarentrega" -> {
+          exigirAdmin(s);
+          String[] p =
+              campos(args, 4, "/reportarentrega paqueteId;donacionId;productoId;cantidad");
+          String resp =
+              logistica.reportarEntrega(p[0], p[1], p[2], parseInt(p[3]));
+          telegram.sendMessage(chatId, "✅ Entrega reportada en Logística:\n" + resp);
+        }
+
+        // ── Incentivos ──────────────────────────────────────────────────────
+        case "/insignias" ->
+            telegram.sendMessage(chatId, Formato.listaInsignias(incentivos.listarInsignias()));
+        case "/misiones" ->
+            telegram.sendMessage(chatId, Formato.listaMisiones(incentivos.listarMisiones()));
+        case "/procesardonador" -> {
+          exigirAdmin(s);
+          String donId = requerido(args, "/procesardonador <número de donador>");
+          String resp = incentivos.procesarDonador(donId);
+          telegram.sendMessage(chatId, "🔄 Donador procesado en Incentivos:\n" + resp);
+        }
+
         default -> telegram.sendMessage(chatId, "No conozco ese comando. Probá /help");
       }
     } catch (RuntimeException e) {
@@ -315,6 +349,8 @@ public class DonaTrackBot {
         + "👤 /perfil — tus datos\n"
         + "📊 /misestadisticas — categoría e insignias\n"
         + "❓ /puedodonar — si tenés la cuenta habilitada\n"
+        + "🏅 /insignias — catálogo de insignias\n"
+        + "🎯 /misiones — misiones para ganar insignias\n"
         + "🚪 /salir";
   }
 
@@ -349,6 +385,16 @@ public class DonaTrackBot {
         /quejas <número>
         /estadodonador id;VERIFICADO|SOSPECHOSO|BANEADO
         /categoriadonador id;categoria
+        /procesardonador <número>
+
+        <b>Logística</b>
+        /depositos — depósitos y capacidad
+        /stock <productoID> — stock disponible
+        /reportarentrega paqueteId;donacionId;productoId;cantidad
+
+        <b>Incentivos</b>
+        /insignias — catálogo de insignias
+        /misiones — misiones activas
 
         <b>Catálogo</b>
         /productos

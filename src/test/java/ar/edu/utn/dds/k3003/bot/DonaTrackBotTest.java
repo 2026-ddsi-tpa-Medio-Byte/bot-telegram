@@ -29,12 +29,14 @@ class DonaTrackBotTest {
   @Mock private TelegramClient telegram;
   @Mock private DonadoresApiClient api;
   @Mock private DonacionesApiClient donaciones;
+  @Mock private LogisticaApiClient logistica;
+  @Mock private IncentivosApiClient incentivos;
 
   private DonaTrackBot bot;
 
   @BeforeEach
   void setUp() {
-    bot = new DonaTrackBot(telegram, api, donaciones, "DEP-TEST");
+    bot = new DonaTrackBot(telegram, api, donaciones, logistica, incentivos, "DEP-TEST");
   }
 
   // ── Entrada ────────────────────────────────────────────────────────────────
@@ -246,4 +248,97 @@ class DonaTrackBotTest {
     org.junit.jupiter.api.Assertions.assertTrue(bienvenida.contains("/soy_donador"));
     org.junit.jupiter.api.Assertions.assertTrue(bienvenida.contains("/soy_admin"));
   }
+
+  // ── Logística ──────────────────────────────────────────────────────────────
+
+  @Test
+  @DisplayName("/depositos consulta los depósitos de Logística")
+  void listarDepositos() {
+    when(logistica.listarDepositos()).thenReturn("[{\"id\":\"DEP-1\",\"direccion\":\"Calle 1\",\"capacidadMaxima\":100}]");
+
+    bot.handle(1L, "/depositos");
+
+    verify(logistica).listarDepositos();
+    verify(telegram).sendMessage(eq(1L), contains("DEP-1"));
+  }
+
+  @Test
+  @DisplayName("/stock consulta el stock de un producto puntual")
+  void consultarStock() {
+    when(logistica.consultarStock("5")).thenReturn("{\"disponible\":20}");
+
+    bot.handle(1L, "/stock 5");
+
+    verify(logistica).consultarStock("5");
+    verify(telegram).sendMessage(eq(1L), contains("20"));
+  }
+
+  @Test
+  @DisplayName("Un donador no puede reportar entregas en Logística")
+  void reportarEntregaRequiereAdmin() {
+    bot.handle(1L, "/soy_donador");
+    bot.handle(1L, "/reportarentrega PAQ-1;DON-1;PROD-1;10");
+
+    verify(logistica, never()).reportarEntrega(any(), any(), any(), anyInt());
+    verify(telegram).sendMessage(eq(1L), contains("administradores"));
+  }
+
+  @Test
+  @DisplayName("El admin sí puede reportar entregas en Logística")
+  void reportarEntregaAdmin() {
+    bot.handle(1L, "/soy_admin");
+    when(logistica.reportarEntrega("PAQ-1", "DON-1", "PROD-1", 10)).thenReturn("OK");
+
+    bot.handle(1L, "/reportarentrega PAQ-1;DON-1;PROD-1;10");
+
+    verify(logistica).reportarEntrega("PAQ-1", "DON-1", "PROD-1", 10);
+    verify(telegram).sendMessage(eq(1L), contains("Entrega reportada"));
+  }
+
+  // ── Incentivos ─────────────────────────────────────────────────────────────
+
+  @Test
+  @DisplayName("/insignias consulta el catálogo de insignias de Incentivos")
+  void listarInsignias() {
+    when(incentivos.listarInsignias()).thenReturn("[{\"id\":\"ins-1\",\"nombre\":\"Solidario\",\"descripcion\":\"Dono 10 veces\"}]");
+
+    bot.handle(1L, "/insignias");
+
+    verify(incentivos).listarInsignias();
+    verify(telegram).sendMessage(eq(1L), contains("Solidario"));
+  }
+
+  @Test
+  @DisplayName("/misiones consulta las misiones activas de Incentivos")
+  void listarMisiones() {
+    when(incentivos.listarMisiones()).thenReturn("[{\"id\":\"mis-1\",\"nombre\":\"Mision 1\",\"insigniaID\":\"ins-1\",\"categoriaInicio\":\"A\",\"categoriaFin\":\"B\"}]");
+
+    bot.handle(1L, "/misiones");
+
+    verify(incentivos).listarMisiones();
+    verify(telegram).sendMessage(eq(1L), contains("Mision 1"));
+  }
+
+  @Test
+  @DisplayName("/procesardonador requiere ser admin")
+  void procesarDonadorRequiereAdmin() {
+    bot.handle(1L, "/soy_donador");
+    bot.handle(1L, "/procesardonador 1");
+
+    verify(incentivos, never()).procesarDonador(anyString());
+    verify(telegram).sendMessage(eq(1L), contains("administradores"));
+  }
+
+  @Test
+  @DisplayName("El admin puede procesar a un donador en Incentivos")
+  void procesarDonadorAdmin() {
+    bot.handle(1L, "/soy_admin");
+    when(incentivos.procesarDonador("1")).thenReturn("OK");
+
+    bot.handle(1L, "/procesardonador 1");
+
+    verify(incentivos).procesarDonador("1");
+    verify(telegram).sendMessage(eq(1L), contains("procesado en Incentivos"));
+  }
 }
+

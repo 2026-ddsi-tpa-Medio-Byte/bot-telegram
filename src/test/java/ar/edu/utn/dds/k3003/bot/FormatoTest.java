@@ -139,4 +139,63 @@ class FormatoTest {
     assertTrue(salida.contains("—"), "lo que falta se muestra como guion");
     assertFalse(salida.contains("null"));
   }
+
+  @Test
+  @DisplayName("Los depósitos de Logística se muestran legibles con dirección y capacidad")
+  void depositosLegibles() {
+    String json =
+        """
+        [{"id":"DEP-UTN-01","nombre":"Depósito Central","direccion":"Medrano 951",
+          "capacidadMaxima":5000}]""";
+
+    String salida = Formato.listaDepositos(json);
+
+    assertTrue(salida.contains("DEP-UTN-01"));
+    assertTrue(salida.contains("Depósito Central"));
+    assertTrue(salida.contains("Medrano 951"));
+    assertTrue(salida.contains("5000"));
+    assertFalse(salida.contains("["));
+  }
+
+  @Test
+  @DisplayName("El stock de un producto muestra la cantidad disponible")
+  void stockLegible() {
+    String json = "{\"productoID\":\"1\",\"disponible\":42}";
+
+    String salida = Formato.stock("1", json);
+
+    assertTrue(salida.contains("Stock de producto nº 1"));
+    assertTrue(salida.contains("42"));
+  }
+
+  @Test
+  @DisplayName("Las insignias de Incentivos se listan con nombre y descripción")
+  void insigniasLegibles() {
+    String json =
+        """
+        [{"id":"ins-1","nombre":"Solidario","descripcion":"Donación aceptada"}]""";
+
+    String salida = Formato.listaInsignias(json);
+
+    assertTrue(salida.contains("Solidario"));
+    assertTrue(salida.contains("Donación aceptada"));
+    assertFalse(salida.contains("["));
+  }
+
+  @Test
+  @DisplayName("Las misiones de Incentivos se listan con niveles")
+  void misionesLegibles() {
+    String json =
+        """
+        [{"id":"mis-1","nombre":"Misión Solidaria","insigniaID":"ins-1",
+          "categoriaInicio":"OCASIONAL","categoriaFin":"COLABORADOR"}]""";
+
+    String salida = Formato.listaMisiones(json);
+
+    assertTrue(salida.contains("Misión Solidaria"));
+    assertTrue(salida.contains("ins-1"));
+    assertTrue(salida.contains("OCASIONAL"));
+    assertTrue(salida.contains("COLABORADOR"));
+  }
 }
+

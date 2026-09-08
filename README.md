@@ -17,6 +17,8 @@ Variables de entorno (o editar `src/main/resources/application.properties`):
 | `TELEGRAM_BOT_TOKEN` |  | Token de BotFather. **Sin esto el bot no arranca.** |
 | `DONADORES_URL` | `http://localhost:8080` | URL base del módulo Donadores (local o Render). |
 | `DONACIONES_URL` | la de Render | URL del módulo Donaciones, para que se pueda donar desde el bot. |
+| `LOGISTICA_URL` | la de Render | URL del módulo Logística, para consultar depósitos, stock y reportar entregas. |
+| `INCENTIVOS_URL` | la de Render | URL del módulo Incentivos, para consultar insignias, misiones y procesar donadores. |
 | `DEPOSITO_DEFAULT` | `DEP-UTN-01` | Depósito al que van las donaciones hechas desde el bot. |
 
 ## Cómo correrlo
@@ -71,6 +73,10 @@ sin repetir quién es.
 - `/donadores` · `/donador <id>` · `/estadisticas <id>` · `/quejas <id>`
 - `/estadodonador id;VERIFICADO|SOSPECHOSO|BANEADO`
 - `/categoriadonador id;categoria`
+- `/depositos` · `/stock <depositoId>`
+- `/reportarentrega <envioId>`
+- `/insignias` · `/misiones`
+- `/procesardonador <donadorId>`
 
 > `tipo` de necesidad: `EXTRAORDINARIA` o `RECURRENTE`.
 
@@ -90,14 +96,18 @@ Ejemplo de admin:
 /soy_admin
 /crearentidad Comedor Hogwarts;Calle 1;1130000000;hogwarts@mail.com
 /altanecesidad 1;8;Treinta sillas tras la inundacion;30;1;EXTRAORDINARIA
+/depositos
+/stock DEP-UTN-01
+/reportarentrega 1
+/insignias
+/misiones
+/procesardonador 1
 ```
 
 ## Notas de diseño
 - Sin librerías externas de Telegram: usa la Bot API por HTTP (`getUpdates`/`sendMessage`) con
   `RestTemplate`, para evitar problemas de versiones.
 - "Recibe un comando y devuelve una respuesta" (como pide la consigna). El estado que guarda es
-  mínimo: el rol elegido por chat.
+  mínimo: el rol elegido por chat y el donador identificado.
 - Bajo este esquema (long-polling), **solo una instancia** del bot puede correr a la vez por token.
-- Endpoints del módulo que usa el bot (todos en *Donadores y Entidades*): `POST/GET /donadores`,
-  `GET /donadores/{id}`, `GET /donadores/{id}/estadisticas`, `POST/GET/PUT /entidades` y
-  `/entidades/{id}`, `POST/GET/PUT/DELETE /necesidades` y `/necesidades/{id}`.
+- Conecta con los cuatro módulos del sistema DonaTrack: Donadores y Entidades, Donaciones, Logística e Incentivos.
