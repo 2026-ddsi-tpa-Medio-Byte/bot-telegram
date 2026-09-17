@@ -38,6 +38,48 @@ public class LogisticaApiClient {
     return get("/stock/" + productoId.trim());
   }
 
+  /** La asignación de un paquete dice a qué necesidad fue a parar y por qué criterio. */
+  public String buscarAsignacion(String paqueteId) {
+    return get("/api/asignaciones/paquetes/" + paqueteId.trim());
+  }
+
+  public String crearDeposito(
+      String id, String nombre, String direccion, int capacidad, String algoritmo) {
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("id", id);
+    body.put("algoritmo", algoritmo);
+    body.put("nombre", nombre);
+    body.put("direccion", direccion);
+    body.put("capacidadMaxima", capacidad);
+    body.put("stockActual", new java.util.ArrayList<>());
+    return post("/depositos", body);
+  }
+
+  /** El algoritmo define a cuál de las necesidades candidatas le asigna cada donación. */
+  public String configurarAlgoritmo(String depositoId, String algoritmo) {
+    try {
+      rest.put(
+          baseUrl + "/api/depositos/" + depositoId.trim() + "/algoritmo?algoritmo=" + algoritmo,
+          null);
+      return "listo";
+    } catch (HttpStatusCodeException e) {
+      throw new RuntimeException(traducir(e));
+    } catch (ResourceAccessException e) {
+      throw new RuntimeException(sinConexion());
+    }
+  }
+
+  public String limpiarBase() {
+    try {
+      rest.delete(baseUrl + "/api/limpiar-base");
+      return "listo";
+    } catch (HttpStatusCodeException e) {
+      throw new RuntimeException(traducir(e));
+    } catch (ResourceAccessException e) {
+      throw new RuntimeException(sinConexion());
+    }
+  }
+
   public String reportarEntrega(
       String paqueteId, String donacionId, String productoId, int cantidad) {
     Map<String, Object> body = new LinkedHashMap<>();

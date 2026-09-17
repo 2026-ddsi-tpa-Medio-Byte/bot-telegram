@@ -27,6 +27,8 @@ public class DonaTrackBot {
   private final DonacionesApiClient donaciones;
   private final LogisticaApiClient logistica;
   private final IncentivosApiClient incentivos;
+  private final Impacto impacto;
+  private final Demo demo;
   private final String depositoPorDefecto;
 
   private final Map<Long, Sesion> sesiones = new ConcurrentHashMap<>();
@@ -39,12 +41,16 @@ public class DonaTrackBot {
       DonacionesApiClient donaciones,
       LogisticaApiClient logistica,
       IncentivosApiClient incentivos,
+      Impacto impacto,
+      Demo demo,
       @Value("${deposito.default:DEP-UTN-01}") String depositoPorDefecto) {
     this.telegram = telegram;
     this.api = api;
     this.donaciones = donaciones;
     this.logistica = logistica;
     this.incentivos = incentivos;
+    this.impacto = impacto;
+    this.demo = demo;
     this.depositoPorDefecto = depositoPorDefecto;
   }
 
@@ -177,10 +183,17 @@ public class DonaTrackBot {
         case "/donar" -> {
           exigirIdentificado(s);
           String[] p = campos(args, 3, "/donar productoID;cantidad;descripcion");
-          String json =
-              donaciones.donar(
-                  s.donadorId(), depositoPorDefecto, p[2], p[0], parseInt(p[1]));
-          telegram.sendMessage(chatId, "🎁 ¡Gracias por donar!\n\n" + Formato.donacion(json));
+          telegram.sendMessage(
+              chatId,
+              impacto.donar(s.donadorId(), depositoPorDefecto, p[2], p[0], parseInt(p[1])));
+        }
+        case "/donarcomo" -> {
+          // Para la demostración: el admin recorre los flujos de punta a punta sin tener que
+          // cambiar de rol y volver a entrar como donador en el medio.
+          exigirAdmin(s);
+          String[] p = campos(args, 4, "/donarcomo donadorID;productoID;cantidad;descripcion");
+          telegram.sendMessage(
+              chatId, impacto.donar(p[0], depositoPorDefecto, p[3], p[1], parseInt(p[2])));
         }
         case "/productos" -> telegram.sendMessage(chatId, productos());
         case "/puedodonar" -> {
@@ -280,11 +293,29 @@ public class DonaTrackBot {
         }
         case "/reportarentrega" -> {
           exigirAdmin(s);
-          String[] p =
-              campos(args, 4, "/reportarentrega paqueteId;donacionId;productoId;cantidad");
-          String resp =
-              logistica.reportarEntrega(p[0], p[1], p[2], parseInt(p[3]));
-          telegram.sendMessage(chatId, "✅ Entrega reportada en Logística:\n" + resp);
+          // Logística nombra cada paquete "paq-" + el id de la donación. Pedir el paquete sería
+          // pedir un dato que nadie tiene a mano: no hay forma de listarlos.
+          String[] p = campos(args, 3, "/reportarentrega donacionId;productoId;cantidad");
+          telegram.sendMessage(
+              chatId, impacto.reportarEntrega("paq-" + p[0], p[0], p[1], parseInt(p[2])));
+        }
+        case "/creardeposito" -> {
+          exigirAdmin(s);
+          String[] p = campos(args, 4, "/creardeposito id;nombre;direccion;capacidad");
+          logistica.crearDeposito(p[0], p[1], p[2], parseInt(p[3]), "SUB_ATENDIDOS");
+          telegram.sendMessage(chatId, "🏬 Depósito <b>" + p[0] + "</b> creado.");
+        }
+        case "/algoritmo" -> {
+          exigirAdmin(s);
+          String[] p = campos(args, 2, "/algoritmo depositoId;SUB_ATENDIDOS|PRIORIDAD_POR_SCORE");
+          logistica.configurarAlgoritmo(p[0], p[1].toUpperCase());
+          telegram.sendMessage(
+              chatId,
+              "⚙️ El depósito <b>"
+                  + p[0]
+                  + "</b> ahora asigna con <b>"
+                  + p[1].toUpperCase()
+                  + "</b>.\nEs el criterio con el que elige a cuál necesidad le manda cada donación.");
         }
 
         // ── Incentivos ──────────────────────────────────────────────────────
@@ -295,8 +326,55 @@ public class DonaTrackBot {
         case "/procesardonador" -> {
           exigirAdmin(s);
           String donId = requerido(args, "/procesardonador <número de donador>");
-          String resp = incentivos.procesarDonador(donId);
-          telegram.sendMessage(chatId, "🔄 Donador procesado en Incentivos:\n" + resp);
+          telegram.sendMessage(chatId, impacto.procesar(donId));
+        }
+        case "/crearinsignia" -> {
+          exigirAdmin(s);
+          String[] p = campos(args, 3, "/crearinsignia id;nombre;descripcion");
+          incentivos.crearInsignia(p[0], p[1], p[2]);
+          telegram.sendMessage(chatId, "🏅 Insignia <b>" + p[0] + "</b> creada.");
+        }
+        case "/crearmision" -> {
+          exigirAdmin(s);
+          String[] p =
+              campos(
+                  args, 5, "/crearmision id;nombre;insigniaID;categoriaInicio;categoriaFin");
+          incentivos.crearMision(p[0], p[1], p[2], p[3], p[4], "COMPLETITUD");
+          telegram.sendMessage(
+              chatId,
+              "🎯 Misión <b>" + p[0] + "</b> creada: otorga la insignia " + p[2] + ".");
+        }
+
+        // ── Catálogo de Donaciones ──────────────────────────────────────────
+        case "/crearidentificador" -> {
+          exigirAdmin(s);
+          String[] p = campos(args, 2, "/crearidentificador CODIGODEBARRAS|QR;descripcion");
+          telegram.sendMessage(
+              chatId,
+              "🏷️ Identificador creado:\n"
+                  + donaciones.crearIdentificador(p[0].toUpperCase(), p[1]));
+        }
+        case "/crearproducto" -> {
+          exigirAdmin(s);
+          String[] p = campos(args, 4, "/crearproducto nombre;descripcion;categoria;identificadorID");
+          telegram.sendMessage(
+              chatId, "📦 Producto creado:\n" + donaciones.crearProducto(p[0], p[1], p[2], p[3]));
+        }
+        case "/quejar" -> {
+          String[] p = campos(args, 2, "/quejar donacionId;que paso");
+          telegram.sendMessage(chatId, impacto.queja(p[0], p[1]));
+        }
+
+        // ── Demostración ────────────────────────────────────────────────────
+        case "/demo" -> telegram.sendMessage(chatId, demo.guion());
+        case "/estado" -> telegram.sendMessage(chatId, demo.estado());
+        case "/reiniciar" -> {
+          exigirAdmin(s);
+          telegram.sendMessage(chatId, demo.reiniciar());
+        }
+        case "/preparar" -> {
+          exigirAdmin(s);
+          telegram.sendMessage(chatId, demo.preparar());
         }
 
         default -> telegram.sendMessage(chatId, "No conozco ese comando. Probá /help");
@@ -390,11 +468,27 @@ public class DonaTrackBot {
         <b>Logística</b>
         /depositos — depósitos y capacidad
         /stock <productoID> — stock disponible
-        /reportarentrega paqueteId;donacionId;productoId;cantidad
+        /reportarentrega donacionId;productoId;cantidad
+        /creardeposito id;nombre;direccion;capacidad
+        /algoritmo depositoId;SUB_ATENDIDOS|PRIORIDAD_POR_SCORE
 
         <b>Incentivos</b>
         /insignias — catálogo de insignias
         /misiones — misiones activas
+        /crearinsignia id;nombre;descripcion
+        /crearmision id;nombre;insigniaID;categoriaInicio;categoriaFin
+
+        <b>Catálogo de donaciones</b>
+        /donarcomo donadorID;productoID;cantidad;descripcion
+        /crearidentificador CODIGODEBARRAS|QR;descripcion
+        /crearproducto nombre;descripcion;categoria;identificadorID
+        /quejar donacionId;que paso
+
+        <b>Demostración</b>
+        /demo — el guion, paso por paso
+        /estado — cómo está todo ahora mismo
+        /reiniciar — vacía las cuatro bases
+        /preparar — carga las precondiciones de los flujos
 
         <b>Catálogo</b>
         /productos

@@ -372,7 +372,8 @@ final class Formato {
   }
 
   /** Barra de progreso de diez casilleros. */
-  private static String barra(int actual, int objetivo) {
+  /** Package-private para que Impacto muestre el progreso con la misma barra que el resto. */
+  static String barra(int actual, int objetivo) {
     if (objetivo <= 0) {
       return "";
     }

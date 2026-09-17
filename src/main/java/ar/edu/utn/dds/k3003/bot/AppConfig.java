@@ -15,6 +15,16 @@ public class AppConfig {
     return builder
         .connectTimeout(Duration.ofSeconds(10))
         .readTimeout(Duration.ofSeconds(60))
+        // Va en un interceptor y no en cada cliente para que ninguna llamada nueva se olvide de
+        // mandar la traza: si falta en una, el recorrido en Datadog queda cortado justo ahí.
+        .interceptors(
+            (request, body, ejecucion) -> {
+              String traza = Traza.actual();
+              if (traza != null) {
+                request.getHeaders().set(Traza.HEADER, traza);
+              }
+              return ejecucion.execute(request, body);
+            })
         .build();
   }
 }

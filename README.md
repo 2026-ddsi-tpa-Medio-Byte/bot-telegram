@@ -1,8 +1,8 @@
-# DonaTrack — Bot de Telegram (UI, Entrega 4)
+# DonaTrack — Bot de Telegram
 
-Bot de Telegram que permite operar el sistema DonaTrack desde el celular. Es un **cliente HTTP**
-del módulo *Donadores y Entidades* (no tiene base de datos propia). Corre localmente como un único
-proceso (long-polling).
+Bot de Telegram para operar DonaTrack desde el celular. Es un **cliente HTTP de los cuatro
+módulos** —Donaciones, Donadores y Entidades, Logística e Incentivos— y no tiene base de datos
+propia. Corre localmente como un único proceso (long-polling).
 
 ## Requisitos
 - Java 21, Maven.
@@ -73,12 +73,47 @@ sin repetir quién es.
 - `/donadores` · `/donador <id>` · `/estadisticas <id>` · `/quejas <id>`
 - `/estadodonador id;VERIFICADO|SOSPECHOSO|BANEADO`
 - `/categoriadonador id;categoria`
-- `/depositos` · `/stock <depositoId>`
-- `/reportarentrega <envioId>`
+- `/quejar donacionId;que paso`
+
+**Catálogo de Donaciones**
+
+- `/crearidentificador CODIGODEBARRAS|QR;descripcion`
+- `/crearproducto nombre;descripcion;categoria;identificadorID`
+
+**Logística**
+
+- `/depositos` · `/stock <productoID>`
+- `/creardeposito id;nombre;direccion;capacidad`
+- `/algoritmo depositoId;SUB_ATENDIDOS|PRIORIDAD_POR_SCORE` — el criterio con el que ese
+  depósito elige a qué necesidad le asigna cada donación
+- `/reportarentrega donacionId;productoId;cantidad` — el paquete no se pide: Logística lo
+  nombra `paq-` más el número de la donación
+
+**Incentivos**
+
 - `/insignias` · `/misiones`
+- `/crearinsignia id;nombre;descripcion`
+- `/crearmision id;nombre;insigniaID;categoriaInicio;categoriaFin`
 - `/procesardonador <donadorId>`
 
 > `tipo` de necesidad: `EXTRAORDINARIA` o `RECURRENTE`.
+
+### Demostración
+
+Cuatro comandos para conducir una demostración sin preparar nada a mano:
+
+| Comando | Qué hace |
+|---|---|
+| `/demo` | El guion: qué mostrar y en qué orden |
+| `/reiniciar` | Vacía las bases de los cuatro módulos (admin) |
+| `/preparar` | Carga las precondiciones de todos los flujos (admin) |
+| `/estado` | Cómo está el sistema ahora mismo, módulo por módulo |
+
+**Las operaciones cuentan qué provocaron.** Donar, reportar una entrega, quejarse o procesar un
+donador no devuelven el JSON del módulo que las recibió, sino un resumen de qué cambió en cada
+uno: el estado de la donación, si Logística la asignó o la guardó, cómo quedó la necesidad y qué
+insignias se movieron. Cada operación viaja además con un número de traza que aparece en los logs
+de los tres módulos, así que buscándolo en Datadog se ve el recorrido completo.
 
 Ejemplo de donador:
 ```
@@ -90,17 +125,16 @@ Ejemplo de donador:
 /misdonaciones
 ```
 
-Ejemplo de admin:
+Ejemplo de admin, que es tambien el recorrido de la demostracion:
 ```
 /start
 /soy_admin
-/crearentidad Comedor Hogwarts;Calle 1;1130000000;hogwarts@mail.com
-/altanecesidad 1;8;Treinta sillas tras la inundacion;30;1;EXTRAORDINARIA
-/depositos
-/stock DEP-UTN-01
-/reportarentrega 1
-/insignias
-/misiones
+/reiniciar
+/preparar
+/estado
+/donarcomo 1;1;10;Diez kilos de arroz
+/reportarentrega 1;1;10
+/quejar 1;Llego en mal estado
 /procesardonador 1
 ```
 

@@ -56,6 +56,47 @@ public class DonacionesApiClient {
     return get("/productos/" + id);
   }
 
+  public String listarDonaciones() {
+    return get("/donaciones");
+  }
+
+  public String listarIdentificadores() {
+    return get("/identificadores");
+  }
+
+  public String crearIdentificador(String tipo, String descripcion) {
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("tipo", tipo);
+    body.put("descripcion", descripcion);
+    return post("/identificadores", body);
+  }
+
+  public String crearProducto(
+      String nombre, String descripcion, String categoria, String identificadorID) {
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("nombre", nombre);
+    body.put("descripcion", descripcion);
+    body.put("categoriaID", categoria);
+    body.put("identificadorID", identificadorID);
+    return post("/productos", body);
+  }
+
+  public String registrarQueja(String donacionId, String descripcion) {
+    return post("/donaciones/" + donacionId + "/quejas", descripcion);
+  }
+
+  /** Borra donaciones, productos e identificadores. Solo para preparar una demostración. */
+  public String reset() {
+    try {
+      rest.delete(baseUrl + "/donaciones/reset");
+      return "listo";
+    } catch (HttpStatusCodeException e) {
+      throw new RuntimeException(traducir(e));
+    } catch (ResourceAccessException e) {
+      throw new RuntimeException(sinConexion());
+    }
+  }
+
   // ── Helpers HTTP ───────────────────────────────────────────────────────────
 
   private String get(String path) {

@@ -36,7 +36,11 @@ class DonaTrackBotTest {
 
   @BeforeEach
   void setUp() {
-    bot = new DonaTrackBot(telegram, api, donaciones, logistica, incentivos, "DEP-TEST");
+    // Impacto y Demo van reales, con los clientes mockeados: así se ejercita también el camino en
+    // el que un módulo no contesta, que es el que más se va a dar en la demostración.
+    Impacto impacto = new Impacto(donaciones, api, logistica, incentivos);
+    Demo demo = new Demo(donaciones, api, logistica, incentivos, "DEP-TEST");
+    bot = new DonaTrackBot(telegram, api, donaciones, logistica, incentivos, impacto, demo, "DEP-TEST");
   }
 
   // ── Entrada ────────────────────────────────────────────────────────────────
@@ -135,7 +139,7 @@ class DonaTrackBotTest {
     bot.handle(1L, "/donar 3;10;Diez kilos de arroz");
 
     verify(donaciones).donar("1", "DEP-TEST", "Diez kilos de arroz", "3", 10);
-    verify(telegram).sendMessage(eq(1L), contains("Gracias por donar"));
+    verify(telegram).sendMessage(eq(1L), contains("Donación registrada"));
   }
 
   @Test
@@ -287,11 +291,12 @@ class DonaTrackBotTest {
   @DisplayName("El admin sí puede reportar entregas en Logística")
   void reportarEntregaAdmin() {
     bot.handle(1L, "/soy_admin");
-    when(logistica.reportarEntrega("PAQ-1", "DON-1", "PROD-1", 10)).thenReturn("OK");
+    when(logistica.reportarEntrega("paq-DON-1", "DON-1", "PROD-1", 10)).thenReturn("OK");
 
-    bot.handle(1L, "/reportarentrega PAQ-1;DON-1;PROD-1;10");
+    bot.handle(1L, "/reportarentrega DON-1;PROD-1;10");
 
-    verify(logistica).reportarEntrega("PAQ-1", "DON-1", "PROD-1", 10);
+    // El paquete no se pide: Logística lo nombra "paq-" + el id de la donación.
+    verify(logistica).reportarEntrega("paq-DON-1", "DON-1", "PROD-1", 10);
     verify(telegram).sendMessage(eq(1L), contains("Entrega reportada"));
   }
 
@@ -339,6 +344,122 @@ class DonaTrackBotTest {
 
     verify(incentivos).procesarDonador("1");
     verify(telegram).sendMessage(eq(1L), contains("procesado en Incentivos"));
+  }
+
+  // ── Demostración ───────────────────────────────────────────────────────────
+
+  @Test
+  @DisplayName("/demo explica en qué orden mostrar los flujos")
+  void guionDeLaDemo() {
+    bot.handle(1L, "/demo");
+    verify(telegram).sendMessage(eq(1L), contains("/preparar"));
+  }
+
+  @Test
+  @DisplayName("/estado resume los cuatro módulos")
+  void estadoDelSistema() {
+    bot.handle(1L, "/estado");
+    verify(telegram).sendMessage(eq(1L), contains("Incentivos"));
+  }
+
+  @Test
+  @DisplayName("Borrar las bases requiere ser admin")
+  void reiniciarRequiereAdmin() {
+    bot.handle(1L, "/reiniciar");
+
+    verify(donaciones, never()).reset();
+    verify(telegram).sendMessage(eq(1L), contains("admin"));
+  }
+
+  @Test
+  @DisplayName("Reiniciar borra los cuatro módulos")
+  void reiniciarBorraTodo() {
+    bot.handle(1L, "/soy_admin");
+
+    bot.handle(1L, "/reiniciar");
+
+    verify(donaciones).reset();
+    verify(api).reset();
+    verify(logistica).limpiarBase();
+    verify(incentivos).limpiar();
+  }
+
+  @Test
+  @DisplayName("Preparar la demo requiere ser admin")
+  void prepararRequiereAdmin() {
+    bot.handle(1L, "/preparar");
+
+    verify(donaciones, never()).crearIdentificador(anyString(), anyString());
+    verify(telegram).sendMessage(eq(1L), contains("admin"));
+  }
+
+  @Test
+  @DisplayName("El admin puede donar a nombre de un donador, sin cambiar de rol")
+  void donarComoAdmin() {
+    bot.handle(1L, "/soy_admin");
+    when(donaciones.donar("5", "DEP-TEST", "Diez kilos", "3", 10))
+        .thenReturn("{\"id\":\"9\",\"cantidad\":10,\"estado\":\"INGRESADA\"}");
+
+    bot.handle(1L, "/donarcomo 5;3;10;Diez kilos");
+
+    verify(donaciones).donar("5", "DEP-TEST", "Diez kilos", "3", 10);
+    verify(telegram).sendMessage(eq(1L), contains("Donación registrada"));
+  }
+
+  @Test
+  @DisplayName("Donar a nombre de otro es solo para el admin")
+  void donarComoRequiereAdmin() {
+    bot.handle(1L, "/donarcomo 5;3;10;Diez kilos");
+
+    verify(donaciones, never()).donar(anyString(), anyString(), anyString(), anyString(), anyInt());
+  }
+
+  // ── ABM que faltaba de Logística, Incentivos y el catálogo ─────────────────
+
+  @Test
+  @DisplayName("El admin configura el algoritmo de matchmaking de un depósito")
+  void configurarAlgoritmo() {
+    bot.handle(1L, "/soy_admin");
+
+    bot.handle(1L, "/algoritmo DEP-UTN-01;prioridad_por_score");
+
+    verify(logistica).configurarAlgoritmo("DEP-UTN-01", "PRIORIDAD_POR_SCORE");
+    verify(telegram).sendMessage(eq(1L), contains("ahora asigna con"));
+  }
+
+  @Test
+  @DisplayName("El admin da de alta un depósito en Logística")
+  void crearDeposito() {
+    bot.handle(1L, "/soy_admin");
+
+    bot.handle(1L, "/creardeposito DEP-2;Sucursal Norte;Calle 1;500");
+
+    verify(logistica).crearDeposito("DEP-2", "Sucursal Norte", "Calle 1", 500, "SUB_ATENDIDOS");
+  }
+
+  @Test
+  @DisplayName("El admin da de alta productos e identificadores en Donaciones")
+  void crearProducto() {
+    bot.handle(1L, "/soy_admin");
+    when(donaciones.crearProducto("Arroz", "Arroz blanco largo fino", "alimentos", "1"))
+        .thenReturn("{\"id\":\"5\"}");
+
+    bot.handle(1L, "/crearproducto Arroz;Arroz blanco largo fino;alimentos;1");
+
+    verify(donaciones).crearProducto("Arroz", "Arroz blanco largo fino", "alimentos", "1");
+  }
+
+  @Test
+  @DisplayName("El admin da de alta insignias y misiones en Incentivos")
+  void crearInsigniaYMision() {
+    bot.handle(1L, "/soy_admin");
+
+    bot.handle(1L, "/crearinsignia ins-1;Solidario;Primera donacion");
+    bot.handle(1L, "/crearmision mis-1;Mision Solidaria;ins-1;OCASIONAL;COLABORADOR");
+
+    verify(incentivos).crearInsignia("ins-1", "Solidario", "Primera donacion");
+    verify(incentivos)
+        .crearMision("mis-1", "Mision Solidaria", "ins-1", "OCASIONAL", "COLABORADOR", "COMPLETITUD");
   }
 }
 

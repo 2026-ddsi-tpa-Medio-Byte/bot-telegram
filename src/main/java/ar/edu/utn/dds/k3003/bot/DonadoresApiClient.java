@@ -178,6 +178,23 @@ public class DonadoresApiClient {
     return body;
   }
 
+  /** Donadores no expone todas las necesidades juntas: hay que pedirlas por producto. */
+  public String necesidadesDeProducto(String productoId) {
+    return get("/necesidades?productoID=" + productoId.trim());
+  }
+
+  /** Borra donadores, entidades y necesidades. Solo para preparar una demostración. */
+  public String reset() {
+    try {
+      rest.delete(baseUrl + "/reset");
+      return "listo";
+    } catch (HttpStatusCodeException e) {
+      throw new RuntimeException(traducir(e));
+    } catch (ResourceAccessException e) {
+      throw new RuntimeException(sinConexion());
+    }
+  }
+
   public String buscarNecesidad(String id) {
     return get("/necesidades/" + id);
   }

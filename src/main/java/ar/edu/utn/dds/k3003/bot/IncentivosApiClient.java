@@ -40,6 +40,44 @@ public class IncentivosApiClient {
     return post("/donadores/" + donadorId.trim() + "/procesar", null);
   }
 
+  public String insigniasDe(String donadorId) {
+    return get("/donadores/" + donadorId.trim() + "/insignias");
+  }
+
+  public String crearInsignia(String id, String nombre, String descripcion) {
+    java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+    body.put("id", id);
+    body.put("nombre", nombre);
+    body.put("descripcion", descripcion);
+    return post("/insignias", body);
+  }
+
+  /** Una misión otorga una insignia al donador que pasa de una categoría a la siguiente. */
+  public String crearMision(
+      String id,
+      String nombre,
+      String insigniaId,
+      String categoriaInicio,
+      String categoriaFin,
+      String tipo) {
+    java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+    body.put("id", id);
+    body.put("nombre", nombre);
+    body.put("insigniaID", insigniaId);
+    body.put("categoriaInicio", categoriaInicio);
+    body.put("categoriaFin", categoriaFin);
+    body.put("tipo", tipo);
+    return post("/misiones", body);
+  }
+
+  public String asignarMision(String donadorId, java.util.Map<String, Object> mision) {
+    return post("/donadores/" + donadorId.trim() + "/mision-actual", mision);
+  }
+
+  public String limpiar() {
+    return post("/admin/clear", null);
+  }
+
   private String get(String path) {
     try {
       return rest.getForObject(baseUrl + path, String.class);
