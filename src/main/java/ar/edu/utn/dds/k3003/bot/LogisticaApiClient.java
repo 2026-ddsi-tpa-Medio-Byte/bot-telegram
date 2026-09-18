@@ -43,6 +43,29 @@ public class LogisticaApiClient {
     return get("/api/asignaciones/paquetes/" + paqueteId.trim());
   }
 
+  /**
+   * Como la anterior, pero devuelve null si el paquete todavía no existe.
+   *
+   * <p>Que no exista no es un error: Logística procesa las donaciones en segundo plano y el
+   * paquete tarda unos segundos en aparecer. Hay que poder distinguir eso de que Logística no
+   * conteste.
+   */
+  public String buscarAsignacionSiExiste(String paqueteId) {
+    try {
+      return Reintento.siNoResponde(
+          () ->
+              rest.getForObject(
+                  baseUrl + "/api/asignaciones/paquetes/" + paqueteId.trim(), String.class));
+    } catch (HttpStatusCodeException e) {
+      if (e.getStatusCode().value() == 404) {
+        return null;
+      }
+      throw new RuntimeException(traducir(e));
+    } catch (ResourceAccessException e) {
+      throw new RuntimeException(sinConexion());
+    }
+  }
+
   public String crearDeposito(
       String id, String nombre, String direccion, int capacidad, String algoritmo) {
     Map<String, Object> body = new LinkedHashMap<>();
@@ -92,7 +115,7 @@ public class LogisticaApiClient {
 
   private String get(String path) {
     try {
-      return rest.getForObject(baseUrl + path, String.class);
+      return Reintento.siNoResponde(() -> rest.getForObject(baseUrl + path, String.class));
     } catch (HttpStatusCodeException e) {
       throw new RuntimeException(traducir(e));
     } catch (ResourceAccessException e) {

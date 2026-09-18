@@ -100,20 +100,23 @@ sin repetir quién es.
 
 ### Demostración
 
-Cuatro comandos para conducir una demostración sin preparar nada a mano:
+Comandos para conducir una demostración sin preparar nada a mano:
 
 | Comando | Qué hace |
 |---|---|
 | `/demo` | El guion: qué mostrar y en qué orden |
+| `/despertar` | Saca del sueño a los cuatro servicios de Render; conviene unos minutos antes |
 | `/reiniciar` | Vacía las bases de los cuatro módulos (admin) |
 | `/preparar` | Carga las precondiciones de todos los flujos (admin) |
 | `/estado` | Cómo está el sistema ahora mismo, módulo por módulo |
+| `/donarcomo donadorID;productoID;cantidad;descripcion` | Donar a nombre de otro, para que el admin recorra los flujos sin cambiar de rol |
 
 **Las operaciones cuentan qué provocaron.** Donar, reportar una entrega, quejarse o procesar un
 donador no devuelven el JSON del módulo que las recibió, sino un resumen de qué cambió en cada
 uno: el estado de la donación, si Logística la asignó o la guardó, cómo quedó la necesidad y qué
-insignias se movieron. Cada operación viaja además con un número de traza que aparece en los logs
-de los tres módulos, así que buscándolo en Datadog se ve el recorrido completo.
+insignias se movieron. Cada operación viaja además con un número de traza. Donaciones y Donadores la
+escriben en sus logs, así que buscándola en Datadog se ve qué hizo cada uno. Logística e
+Incentivos todavía no la propagan: una entrega o un procesamiento no se pueden seguir enteros.
 
 Ejemplo de donador:
 ```

@@ -44,13 +44,20 @@ class ImpactoTest {
     when(logistica.consultarStock("3")).thenReturn("{\"disponible\":0}");
     when(donaciones.donar("1", "DEP-UTN-01", "Diez kilos", "3", 10))
         .thenReturn("{\"id\":\"12\",\"cantidad\":10,\"estado\":\"INGRESADA\"}");
+    // Copiado de una respuesta real: Logística devuelve los campos en minúscula.
+    when(logistica.buscarAsignacionSiExiste("paq-12"))
+        .thenReturn(
+            """
+            {"paqueteid":"paq-12","necesidadid":"7","estado":"ASIGNADA","origen":"MATCHMAKING"}""");
 
     String salida = impacto.donar("1", "DEP-UTN-01", "Diez kilos", "3", 10);
 
     assertTrue(salida.contains("nº 12"));
     assertTrue(salida.contains("Arroz"), "el nombre se lee mejor que el número de producto");
     assertTrue(salida.contains("INGRESADA"));
-    assertTrue(salida.contains("la asignó a una necesidad"), "el stock no subió");
+    assertTrue(
+        salida.contains("armó el paquete paq-12 y lo asignó a la necesidad 7"),
+        "el destino se lee del paquete, no se deduce del stock");
     assertTrue(salida.contains("0/20"), "hay que ver cómo quedó la necesidad");
     assertTrue(salida.contains("no se satisface al donar"), "es lo que más se malinterpreta");
     assertTrue(salida.contains("traza"), "la traza permite buscar la operación en Datadog");
@@ -69,8 +76,27 @@ class ImpactoTest {
     String salida = impacto.donar("1", "DEP-UTN-01", "Diez kilos", "3", 10);
 
     assertTrue(salida.contains("quedó guardada"));
-    assertFalse(salida.contains("la asignó a una necesidad"));
+    assertFalse(salida.contains("lo asignó a la necesidad"));
     assertTrue(salida.contains("no hay ninguna pendiente"), "sin necesidades hay que decirlo");
+  }
+
+  @Test
+  @DisplayName("Si el worker de Logística todavía no terminó, no se inventa el destino")
+  void workerQueTodaviaNoTermino() {
+    when(donaciones.buscarProducto("3")).thenReturn("{\"id\":\"3\",\"nombre\":\"Arroz\"}");
+    when(donadores.necesidadesDeProducto("3"))
+        .thenReturn("[{\"id\":\"7\",\"cantidadObjetivo\":20,\"cantidadActual\":0}]");
+    when(logistica.consultarStock("3")).thenReturn("{\"disponible\":0}");
+    when(donaciones.donar("1", "DEP-UTN-01", "Diez kilos", "3", 10))
+        .thenReturn("{\"id\":\"12\",\"cantidad\":10,\"estado\":\"INGRESADA\"}");
+    when(logistica.buscarAsignacionSiExiste("paq-12")).thenReturn(null);
+
+    String salida = impacto.donar("1", "DEP-UTN-01", "Diez kilos", "3", 10);
+
+    assertTrue(salida.contains("todavía la está procesando"));
+    assertFalse(
+        salida.contains("lo asignó"),
+        "que el stock no haya subido no prueba nada si el worker no terminó");
   }
 
   @Test

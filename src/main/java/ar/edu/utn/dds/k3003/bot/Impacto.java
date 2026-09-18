@@ -22,6 +22,14 @@ class Impacto {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
+  /** Segundos que se espera por cada consulta del relato antes de darla por perdida. */
+  private static final int PACIENCIA_SEGUNDOS = 6;
+
+  /** El worker de Logística suele tardar un par de segundos en procesar una donación. */
+  private static final int INTENTOS_PAQUETE = 3;
+
+  private static final long ESPERA_ENTRE_INTENTOS_MS = 1500;
+
   private final DonacionesApiClient donaciones;
   private final DonadoresApiClient donadores;
   private final LogisticaApiClient logistica;
@@ -55,13 +63,53 @@ class Impacto {
     try {
       Foto despues = fotoDeProducto(productoId);
       JsonNode donacion = MAPPER.readTree(respuesta);
-      return textoDonacion(donacion, antes, despues, traza);
+      Destino destino = destinoDe(texto(donacion, "id"));
+      return textoDonacion(donacion, antes, despues, destino, traza);
     } catch (Exception e) {
       return "🎁 <b>¡Gracias por donar!</b>\n\n" + Formato.donacion(respuesta);
     }
   }
 
-  private String textoDonacion(JsonNode donacion, Foto antes, Foto despues, String traza) {
+  /** A dónde mandó Logística la donación, si ya se sabe. */
+  private record Destino(JsonNode asignacion, boolean pendiente) {}
+
+  /**
+   * Busca el paquete que armó Logística, que es el único dato cierto sobre a dónde fue la donación.
+   *
+   * <p>Logística procesa en segundo plano, así que se prueba un par de veces: justo después de
+   * donar, el paquete todavía puede no existir. Deducir el destino del stock sería peor: si se mira
+   * antes de que el worker termine, que el stock no haya subido no significa nada.
+   */
+  private Destino destinoDe(String donacionId) {
+    for (int intento = 0; intento < INTENTOS_PAQUETE; intento++) {
+      if (intento > 0) {
+        esperar(ESPERA_ENTRE_INTENTOS_MS);
+      }
+      try {
+        String json =
+            java.util.concurrent.CompletableFuture.supplyAsync(
+                    () -> logistica.buscarAsignacionSiExiste("paq-" + donacionId))
+                .get(PACIENCIA_SEGUNDOS, java.util.concurrent.TimeUnit.SECONDS);
+        if (json != null) {
+          return new Destino(MAPPER.readTree(json), false);
+        }
+      } catch (Exception e) {
+        return new Destino(null, false);
+      }
+    }
+    return new Destino(null, true);
+  }
+
+  private static void esperar(long milisegundos) {
+    try {
+      Thread.sleep(milisegundos);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+  }
+
+  private String textoDonacion(
+      JsonNode donacion, Foto antes, Foto despues, Destino destino, String traza) {
     StringBuilder sb = new StringBuilder("🎁 <b>Donación registrada</b>\n\n");
     sb.append("<b>Donaciones</b> · nº ")
         .append(texto(donacion, "id"))
@@ -73,7 +121,15 @@ class Impacto {
         .append(texto(donacion, "estado"))
         .append("\n");
     sb.append("<b>Donadores</b> · confirmó que el donador existe y que está habilitado\n");
-    sb.append("<b>Logística</b> · ").append(efectoEnStock(antes, despues)).append("\n");
+    sb.append("<b>Logística</b> · ")
+        .append(
+            efectoEnLogistica(
+                antes,
+                despues,
+                destino,
+                donacion.path("cantidad").asInt(0),
+                texto(donacion, "id")))
+        .append("\n");
 
     if (despues.necesidades.isEmpty()) {
       sb.append("<b>Necesidades</b> · no hay ninguna pendiente de este producto\n");
@@ -94,18 +150,30 @@ class Impacto {
     return sb.append(pie(antes, despues, traza)).toString();
   }
 
-  private String efectoEnStock(Foto antes, Foto despues) {
-    if (antes.stock == null || despues.stock == null) {
-      return "no se pudo leer el stock";
+  /** Primero el paquete, que es un dato; el stock solo confirma cuando la donación se guardó. */
+  private String efectoEnLogistica(
+      Foto antes, Foto despues, Destino destino, int cantidad, String donacionId) {
+    if (destino.asignacion() != null) {
+      String origen = primero(destino.asignacion(), "origen");
+      return "armó el paquete "
+          + primero(destino.asignacion(), "paqueteid", "paqueteID")
+          + " y lo asignó a la necesidad "
+          + primero(destino.asignacion(), "necesidadid", "necesidadID")
+          + ("MATCHMAKING".equals(origen) ? " por matchmaking" : "");
     }
-    if (despues.stock > antes.stock) {
+    if (antes.stock != null && despues.stock != null && despues.stock - antes.stock >= cantidad) {
       return "stock "
           + antes.stock
           + " → "
           + despues.stock
           + ": no había necesidad que la reciba, quedó guardada";
     }
-    return "stock " + antes.stock + " → " + despues.stock + ": la asignó a una necesidad";
+    if (destino.pendiente()) {
+      return "todavía la está procesando en segundo plano; el paquete paq-"
+          + donacionId
+          + " aparece en unos segundos";
+    }
+    return "no se pudo consultar a dónde la mandó";
   }
 
   // ── Entrega ────────────────────────────────────────────────────────────────
@@ -125,12 +193,21 @@ class Impacto {
     }
 
     JsonNode donacionDespues = leer(() -> donaciones.buscarDonacion(donacionId));
+    // Si antes de entregar el paquete todavía no figuraba —Logística procesa en segundo plano—, la
+    // necesidad se averigua ahora. Se muestra cómo quedó, sin inventar cómo estaba.
+    JsonNode asignacion = asignacionAntes;
+    String idNecesidad = necesidadId;
+    if (idNecesidad.isBlank()) {
+      asignacion = leer(() -> logistica.buscarAsignacion(paqueteId));
+      idNecesidad = primero(asignacion, "necesidadid", "necesidadID");
+    }
+    String necesidadFinal = idNecesidad;
     JsonNode necesidadDespues =
-        necesidadId.isBlank() ? null : leer(() -> donadores.buscarNecesidad(necesidadId));
+        necesidadFinal.isBlank() ? null : leer(() -> donadores.buscarNecesidad(necesidadFinal));
 
     StringBuilder sb = new StringBuilder("📦 <b>Entrega reportada</b>\n\n");
     sb.append("<b>Logística</b> · paquete ").append(paqueteId);
-    String origen = primero(asignacionAntes, "origen");
+    String origen = primero(asignacion, "origen");
     if (!origen.isBlank()) {
       sb.append(" · asignado por ").append("MATCHMAKING".equals(origen) ? "matchmaking" : "solicitud");
     }
@@ -144,7 +221,7 @@ class Impacto {
       int actual = necesidadDespues.path("cantidadActual").asInt(0);
       int objetivo = necesidadDespues.path("cantidadObjetivo").asInt(0);
       sb.append("<b>Necesidad ")
-          .append(necesidadId)
+          .append(necesidadFinal)
           .append("</b> · ")
           .append(necesidadAntes == null ? "" : necesidadAntes.path("cantidadActual").asInt(0) + " → ")
           .append(Formato.barra(actual, objetivo))
@@ -279,9 +356,18 @@ class Impacto {
     return aviso + "\n🔎 traza <code>" + traza + "</code>\n";
   }
 
+  /**
+   * Lee, pero sin esperar más de lo que dura la atención de quien mira.
+   *
+   * <p>Un módulo caído tarda un minuto y medio en darse por vencido, y el relato acompaña a una
+   * operación que <b>ya ocurrió</b>: más vale decir a tiempo que no se pudo saber, que dejar el
+   * chat en silencio tres minutos.
+   */
   private JsonNode leer(Supplier<String> consulta) {
     try {
-      return MAPPER.readTree(consulta.get());
+      return MAPPER.readTree(
+          java.util.concurrent.CompletableFuture.supplyAsync(consulta)
+              .get(PACIENCIA_SEGUNDOS, java.util.concurrent.TimeUnit.SECONDS));
     } catch (Exception e) {
       return null;
     }

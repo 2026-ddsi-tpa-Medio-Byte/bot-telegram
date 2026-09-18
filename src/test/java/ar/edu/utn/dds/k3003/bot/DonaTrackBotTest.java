@@ -356,6 +356,17 @@ class DonaTrackBotTest {
   }
 
   @Test
+  @DisplayName("/despertar consulta los cuatro módulos para sacarlos del sueño de Render")
+  void despertarModulos() {
+    bot.handle(1L, "/despertar");
+
+    verify(donaciones).listarProductos();
+    verify(api).listarDonadores();
+    verify(logistica).listarDepositos();
+    verify(incentivos).listarInsignias();
+  }
+
+  @Test
   @DisplayName("/estado resume los cuatro módulos")
   void estadoDelSistema() {
     bot.handle(1L, "/estado");

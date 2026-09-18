@@ -80,7 +80,7 @@ public class IncentivosApiClient {
 
   private String get(String path) {
     try {
-      return rest.getForObject(baseUrl + path, String.class);
+      return Reintento.siNoResponde(() -> rest.getForObject(baseUrl + path, String.class));
     } catch (HttpStatusCodeException e) {
       throw new RuntimeException(traducir(e));
     } catch (ResourceAccessException e) {

@@ -367,6 +367,7 @@ public class DonaTrackBot {
 
         // ── Demostración ────────────────────────────────────────────────────
         case "/demo" -> telegram.sendMessage(chatId, demo.guion());
+        case "/despertar" -> telegram.sendMessage(chatId, demo.despertar());
         case "/estado" -> telegram.sendMessage(chatId, demo.estado());
         case "/reiniciar" -> {
           exigirAdmin(s);

@@ -43,6 +43,53 @@ class Demo {
     this.depositoPorDefecto = depositoPorDefecto;
   }
 
+  // ── Despertar ──────────────────────────────────────────────────────────────
+
+  /**
+   * Consulta los cuatro módulos y dice cuáles contestan.
+   *
+   * <p>En el plan gratuito de Render los servicios se duermen sin tráfico. Conviene correrlo unos
+   * minutos antes de mostrar el sistema, para que la primera operación no se coma la espera.
+   */
+  String despertar() {
+    // En paralelo: en serie, un módulo caído suma su espera completa antes de llegar al siguiente.
+    var pendientes =
+        java.util.List.of(
+            despierta("Donaciones", donaciones::listarProductos),
+            despierta("Donadores", donadores::listarDonadores),
+            despierta("Logística", logistica::listarDepositos),
+            despierta("Incentivos", incentivos::listarInsignias));
+
+    StringBuilder sb = new StringBuilder("⏰ <b>Despertando los módulos</b>\n\n");
+    pendientes.forEach(futuro -> sb.append(futuro.join()));
+    return sb.toString();
+  }
+
+  /**
+   * Consulta el módulo sin quedarse esperando más de un minuto.
+   *
+   * <p>Pasado el minuto se deja de esperar, pero el pedido sigue viajando: aunque no se vea la
+   * respuesta, alcanza para que Render termine de arrancar el servicio.
+   */
+  private java.util.concurrent.CompletableFuture<String> despierta(
+      String modulo, Supplier<String> consulta) {
+    return java.util.concurrent.CompletableFuture.supplyAsync(() -> ping(modulo, consulta))
+        .completeOnTimeout(
+            "⚠️ <b>" + modulo + "</b> · tardó más de un minuto; probá de nuevo\n",
+            60,
+            java.util.concurrent.TimeUnit.SECONDS);
+  }
+
+  private String ping(String modulo, Supplier<String> consulta) {
+    long inicio = System.currentTimeMillis();
+    try {
+      consulta.get();
+      return "✅ <b>" + modulo + "</b> · responde (" + (System.currentTimeMillis() - inicio) / 1000 + "s)\n";
+    } catch (Exception e) {
+      return "⚠️ <b>" + modulo + "</b> · no responde\n";
+    }
+  }
+
   // ── Reiniciar ──────────────────────────────────────────────────────────────
 
   String reiniciar() {
@@ -68,6 +115,9 @@ class Demo {
   String preparar() {
     long suf = Instant.now().getEpochSecond();
     StringBuilder sb = new StringBuilder("🌱 <b>Precondiciones cargadas</b>\n\n");
+    // Se despiertan con consultas antes de escribir: si el primer POST se pierde despertando al
+    // servicio, no se puede reintentar sin arriesgar un duplicado.
+    despertar();
     try {
       String identId = id(donaciones.crearIdentificador("CODIGODEBARRAS", "Codigo de barras " + suf));
       // Con CODIGODEBARRAS la descripción necesita al menos tres palabras: es regla del dominio.
@@ -194,6 +244,7 @@ class Demo {
         🎬 <b>Cómo mostrar el sistema</b>
 
         <b>Preparación</b>
+        /despertar — los servicios de Render se duermen; hacelo unos minutos antes
         /reiniciar — vacía las cuatro bases
         /preparar — carga las precondiciones de todos los flujos
         /estado — cómo está todo antes de empezar
@@ -217,9 +268,12 @@ class Demo {
     return MAPPER.readTree(respuesta).path("id").asText();
   }
 
+  /** Con límite de espera: un módulo caído tarda minutos, y el estado es lo primero que se mira. */
   private JsonNode leer(Supplier<String> consulta) {
     try {
-      return MAPPER.readTree(consulta.get());
+      return MAPPER.readTree(
+          java.util.concurrent.CompletableFuture.supplyAsync(consulta)
+              .get(6, java.util.concurrent.TimeUnit.SECONDS));
     } catch (Exception e) {
       return null;
     }
