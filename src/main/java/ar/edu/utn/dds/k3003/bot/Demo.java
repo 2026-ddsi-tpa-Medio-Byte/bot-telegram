@@ -3,6 +3,7 @@ package ar.edu.utn.dds.k3003.bot;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
+import java.util.Map;
 import java.util.function.Supplier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -23,6 +24,9 @@ class Demo {
 
   /** Cuántos productos se recorren para contar necesidades y stock: hay dos consultas por cada uno. */
   private static final int PRODUCTOS_A_RECORRER = 10;
+
+  /** Lo que se espera por cada módulo al despertarlo antes de dar la respuesta. */
+  private static final int ESPERA_AL_DESPERTAR_SEGUNDOS = 20;
 
   private final DonacionesApiClient donaciones;
   private final DonadoresApiClient donadores;
@@ -52,52 +56,86 @@ class Demo {
    * minutos antes de mostrar el sistema, para que la primera operación no se coma la espera.
    */
   String despertar() {
-    // En paralelo: en serie, un módulo caído suma su espera completa antes de llegar al siguiente.
-    var pendientes =
-        java.util.List.of(
-            despierta("Donaciones", donaciones::listarProductos),
-            despierta("Donadores", donadores::listarDonadores),
-            despierta("Logística", logistica::listarDepositos),
-            despierta("Incentivos", incentivos::listarInsignias));
+    Map<String, Boolean> responden = contactar();
 
     StringBuilder sb = new StringBuilder("⏰ <b>Despertando los módulos</b>\n\n");
-    pendientes.forEach(futuro -> sb.append(futuro.join()));
+    responden.forEach(
+        (modulo, responde) ->
+            sb.append(responde ? "✅ <b>" : "⏳ <b>")
+                .append(modulo)
+                .append(responde ? "</b> · responde\n" : "</b> · arrancando (el pedido ya lo despertó)\n"));
+
+    if (responden.containsValue(false)) {
+      sb.append(
+          "\nArrancar de cero le lleva a Render uno o dos minutos. Repetí /despertar hasta que "
+              + "los cuatro respondan: cada intento los empuja un poco más.\n");
+    }
     return sb.toString();
   }
 
   /**
-   * Consulta el módulo sin quedarse esperando más de un minuto.
+   * Toca los cuatro módulos a la vez y dice cuáles contestaron.
    *
-   * <p>Pasado el minuto se deja de esperar, pero el pedido sigue viajando: aunque no se vea la
-   * respuesta, alcanza para que Render termine de arrancar el servicio.
+   * <p>La espera es corta a propósito: un servicio de Render que arranca de cero tarda uno o dos
+   * minutos, y no tiene sentido dejar el chat mudo todo ese rato. El pedido que se corta igual
+   * dispara el arranque, así que el intento siguiente lo encuentra despierto.
    */
-  private java.util.concurrent.CompletableFuture<String> despierta(
-      String modulo, Supplier<String> consulta) {
-    return java.util.concurrent.CompletableFuture.supplyAsync(() -> ping(modulo, consulta))
-        .completeOnTimeout(
-            "⚠️ <b>" + modulo + "</b> · tardó más de un minuto; probá de nuevo\n",
-            60,
-            java.util.concurrent.TimeUnit.SECONDS);
+  private Map<String, Boolean> contactar() {
+    Map<String, Supplier<String>> consultas = new java.util.LinkedHashMap<>();
+    consultas.put("Donaciones", donaciones::listarProductos);
+    consultas.put("Donadores", donadores::listarDonadores);
+    consultas.put("Logística", logistica::listarDepositos);
+    consultas.put("Incentivos", incentivos::listarInsignias);
+
+    Map<String, java.util.concurrent.CompletableFuture<Boolean>> pendientes =
+        new java.util.LinkedHashMap<>();
+    consultas.forEach(
+        (modulo, consulta) ->
+            pendientes.put(
+                modulo,
+                java.util.concurrent.CompletableFuture.supplyAsync(() -> contesta(consulta))
+                    .completeOnTimeout(
+                        false, ESPERA_AL_DESPERTAR_SEGUNDOS, java.util.concurrent.TimeUnit.SECONDS)));
+
+    Map<String, Boolean> responden = new java.util.LinkedHashMap<>();
+    pendientes.forEach((modulo, futuro) -> responden.put(modulo, futuro.join()));
+    return responden;
   }
 
-  private String ping(String modulo, Supplier<String> consulta) {
-    long inicio = System.currentTimeMillis();
+  private boolean contesta(Supplier<String> consulta) {
     try {
       consulta.get();
-      return "✅ <b>" + modulo + "</b> · responde (" + (System.currentTimeMillis() - inicio) / 1000 + "s)\n";
+      return true;
     } catch (Exception e) {
-      return "⚠️ <b>" + modulo + "</b> · no responde\n";
+      return false;
     }
   }
 
   // ── Reiniciar ──────────────────────────────────────────────────────────────
 
   String reiniciar() {
+    // Cada módulo tiene su propia base: no hay un orden que respetar, y en paralelo uno caído no
+    // deja el chat esperando por los otros tres.
+    Map<String, Supplier<String>> borrados = new java.util.LinkedHashMap<>();
+    borrados.put("Donaciones", donaciones::reset);
+    borrados.put("Donadores", donadores::reset);
+    borrados.put("Logística", logistica::limpiarBase);
+    borrados.put("Incentivos", incentivos::limpiar);
+
+    Map<String, java.util.concurrent.CompletableFuture<String>> pendientes =
+        new java.util.LinkedHashMap<>();
+    borrados.forEach(
+        (modulo, borrado) ->
+            pendientes.put(
+                modulo,
+                java.util.concurrent.CompletableFuture.supplyAsync(() -> intentar(modulo, borrado))
+                    .completeOnTimeout(
+                        "⚠️ <b>" + modulo + "</b> · no contestó a tiempo\n",
+                        ESPERA_AL_DESPERTAR_SEGUNDOS,
+                        java.util.concurrent.TimeUnit.SECONDS)));
+
     StringBuilder sb = new StringBuilder("🧹 <b>Sistema reiniciado</b>\n\n");
-    sb.append(intentar("Donaciones", donaciones::reset));
-    sb.append(intentar("Donadores", donadores::reset));
-    sb.append(intentar("Logística", logistica::limpiarBase));
-    sb.append(intentar("Incentivos", incentivos::limpiar));
+    pendientes.forEach((modulo, futuro) -> sb.append(futuro.join()));
     return sb.append("\nAhora /preparar para cargar las precondiciones.\n").toString();
   }
 
@@ -117,7 +155,22 @@ class Demo {
     StringBuilder sb = new StringBuilder("🌱 <b>Precondiciones cargadas</b>\n\n");
     // Se despiertan con consultas antes de escribir: si el primer POST se pierde despertando al
     // servicio, no se puede reintentar sin arriesgar un duplicado.
-    despertar();
+    Map<String, Boolean> responden = contactar();
+
+    // Sin estos tres no hay nada que cargar, y cargar la mitad es peor que no cargar nada: quedan
+    // datos sueltos que no sirven para ningún flujo y hay que limpiarlos a mano.
+    String dormidos =
+        java.util.stream.Stream.of("Donaciones", "Donadores", "Logística")
+            .filter(modulo -> !responden.getOrDefault(modulo, false))
+            .reduce((a, b) -> a + ", " + b)
+            .orElse("");
+    if (!dormidos.isEmpty()) {
+      return "⚠️ <b>No se cargó nada</b>\n\nTodavía no contestan: "
+          + dormidos
+          + ".\n\nArrancar de cero le lleva a Render uno o dos minutos. Mandá /despertar hasta que "
+          + "los cuatro respondan y volvé a intentar.\n";
+    }
+
     try {
       String identId = id(donaciones.crearIdentificador("CODIGODEBARRAS", "Codigo de barras " + suf));
       // Con CODIGODEBARRAS la descripción necesita al menos tres palabras: es regla del dominio.

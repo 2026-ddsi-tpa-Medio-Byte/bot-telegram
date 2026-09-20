@@ -396,6 +396,18 @@ class DonaTrackBotTest {
   }
 
   @Test
+  @DisplayName("Si un módulo no despertó, preparar no carga datos a medias")
+  void prepararNoCargaSiFaltaUnModulo() {
+    bot.handle(1L, "/soy_admin");
+    when(donaciones.listarProductos()).thenThrow(new RuntimeException("no responde"));
+
+    bot.handle(1L, "/preparar");
+
+    verify(donaciones, never()).crearIdentificador(anyString(), anyString());
+    verify(telegram).sendMessage(eq(1L), contains("No se cargó nada"));
+  }
+
+  @Test
   @DisplayName("Preparar la demo requiere ser admin")
   void prepararRequiereAdmin() {
     bot.handle(1L, "/preparar");
