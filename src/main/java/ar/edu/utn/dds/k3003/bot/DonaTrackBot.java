@@ -29,9 +29,13 @@ public class DonaTrackBot {
   private final IncentivosApiClient incentivos;
   private final Impacto impacto;
   private final Demo demo;
+  private final Formularios formularios;
   private final String depositoPorDefecto;
 
   private final Map<Long, Sesion> sesiones = new ConcurrentHashMap<>();
+
+  /** Los formularios en curso, uno por chat: lo que la persona escriba es la respuesta pendiente. */
+  private final Map<Long, Formulario> conversaciones = new ConcurrentHashMap<>();
   private volatile long offset = 0;
   private volatile boolean running = true;
 
@@ -43,6 +47,7 @@ public class DonaTrackBot {
       IncentivosApiClient incentivos,
       Impacto impacto,
       Demo demo,
+      Formularios formularios,
       @Value("${deposito.default:DEP-UTN-01}") String depositoPorDefecto) {
     this.telegram = telegram;
     this.api = api;
@@ -51,6 +56,7 @@ public class DonaTrackBot {
     this.incentivos = incentivos;
     this.impacto = impacto;
     this.demo = demo;
+    this.formularios = formularios;
     this.depositoPorDefecto = depositoPorDefecto;
   }
 
@@ -109,9 +115,14 @@ public class DonaTrackBot {
     Sesion s = sesiones.computeIfAbsent(chatId, k -> new Sesion());
 
     try {
+      if (respondeUnFormulario(chatId, cmd, text)) {
+        return;
+      }
       switch (cmd) {
         case "/start" -> telegram.sendMessage(chatId, bienvenida());
         case "/help" -> telegram.sendMessage(chatId, menuSegun(s));
+        case "/cancelar" ->
+            telegram.sendMessage(chatId, "No hay nada a medio hacer. /help para ver qué podés hacer.");
         case "/salir" -> {
           s.salir();
           telegram.sendMessage(chatId, "Listo, cerraste la sesión. /start para volver a entrar.");
@@ -138,6 +149,10 @@ public class DonaTrackBot {
               chatId, "👋 Hola <b>" + nombre + "</b>, entraste.\n\n" + menuDonadorAdentro(s));
         }
         case "/registrarse" -> {
+          if (args.isBlank()) {
+            iniciar(chatId, formularios.registro(s));
+            return;
+          }
           String[] p =
               campos(args, 6, "/registrarse nombre;apellido;edad;email;documento;domicilio");
           String json = api.registrarDonadorRaw(p[0], p[1], parseInt(p[2]), p[3], p[4], p[5]);
@@ -182,6 +197,10 @@ public class DonaTrackBot {
         }
         case "/donar" -> {
           exigirIdentificado(s);
+          if (args.isBlank()) {
+            iniciar(chatId, formularios.donar(s));
+            return;
+          }
           String[] p = campos(args, 3, "/donar productoID;cantidad;descripcion");
           telegram.sendMessage(
               chatId,
@@ -191,6 +210,10 @@ public class DonaTrackBot {
           // Para la demostración: el admin recorre los flujos de punta a punta sin tener que
           // cambiar de rol y volver a entrar como donador en el medio.
           exigirAdmin(s);
+          if (args.isBlank()) {
+            iniciar(chatId, formularios.donarComo());
+            return;
+          }
           String[] p = campos(args, 4, "/donarcomo donadorID;productoID;cantidad;descripcion");
           telegram.sendMessage(
               chatId, impacto.donar(p[0], depositoPorDefecto, p[3], p[1], parseInt(p[2])));
@@ -215,6 +238,10 @@ public class DonaTrackBot {
         // ── Admin: entidades ────────────────────────────────────────────────
         case "/crearentidad" -> {
           exigirAdmin(s);
+          if (args.isBlank()) {
+            iniciar(chatId, formularios.entidad());
+            return;
+          }
           String[] p = campos(args, 4, "/crearentidad razonSocial;domicilio;telefono;correo");
           String json = api.crearEntidadRaw(p[0], p[1], p[2], p[3]);
           telegram.sendMessage(chatId, "✅ Entidad creada\n\n" + Formato.entidad(json));
@@ -233,6 +260,10 @@ public class DonaTrackBot {
         // ── Admin: necesidades ──────────────────────────────────────────────
         case "/altanecesidad" -> {
           exigirAdmin(s);
+          if (args.isBlank()) {
+            iniciar(chatId, formularios.necesidad());
+            return;
+          }
           String[] p =
               campos(
                   args,
@@ -268,6 +299,10 @@ public class DonaTrackBot {
         // ── Admin: poder sobre los donadores ────────────────────────────────
         case "/estadodonador" -> {
           exigirAdmin(s);
+          if (args.isBlank()) {
+            iniciar(chatId, formularios.estadoDonador());
+            return;
+          }
           String[] p = campos(args, 2, "/estadodonador id;VERIFICADO|SOSPECHOSO|BANEADO");
           String json = api.cambiarEstadoDonador(p[0], p[1].toUpperCase());
           telegram.sendMessage(chatId, "✅ Estado cambiado\n\n" + Formato.donador(json));
@@ -295,12 +330,20 @@ public class DonaTrackBot {
           exigirAdmin(s);
           // Logística nombra cada paquete "paq-" + el id de la donación. Pedir el paquete sería
           // pedir un dato que nadie tiene a mano: no hay forma de listarlos.
+          if (args.isBlank()) {
+            iniciar(chatId, formularios.entrega());
+            return;
+          }
           String[] p = campos(args, 3, "/reportarentrega donacionId;productoId;cantidad");
           telegram.sendMessage(
               chatId, impacto.reportarEntrega("paq-" + p[0], p[0], p[1], parseInt(p[2])));
         }
         case "/creardeposito" -> {
           exigirAdmin(s);
+          if (args.isBlank()) {
+            iniciar(chatId, formularios.deposito());
+            return;
+          }
           String[] p = campos(args, 4, "/creardeposito id;nombre;direccion;capacidad");
           logistica.crearDeposito(p[0], p[1], p[2], parseInt(p[3]), "SUB_ATENDIDOS");
           telegram.sendMessage(chatId, "🏬 Depósito <b>" + p[0] + "</b> creado.");
@@ -330,12 +373,20 @@ public class DonaTrackBot {
         }
         case "/crearinsignia" -> {
           exigirAdmin(s);
+          if (args.isBlank()) {
+            iniciar(chatId, formularios.insignia());
+            return;
+          }
           String[] p = campos(args, 3, "/crearinsignia id;nombre;descripcion");
           incentivos.crearInsignia(p[0], p[1], p[2]);
           telegram.sendMessage(chatId, "🏅 Insignia <b>" + p[0] + "</b> creada.");
         }
         case "/crearmision" -> {
           exigirAdmin(s);
+          if (args.isBlank()) {
+            iniciar(chatId, formularios.mision());
+            return;
+          }
           String[] p =
               campos(
                   args, 5, "/crearmision id;nombre;insigniaID;categoriaInicio;categoriaFin");
@@ -356,11 +407,19 @@ public class DonaTrackBot {
         }
         case "/crearproducto" -> {
           exigirAdmin(s);
+          if (args.isBlank()) {
+            iniciar(chatId, formularios.producto());
+            return;
+          }
           String[] p = campos(args, 4, "/crearproducto nombre;descripcion;categoria;identificadorID");
           telegram.sendMessage(
               chatId, "📦 Producto creado:\n" + donaciones.crearProducto(p[0], p[1], p[2], p[3]));
         }
         case "/quejar" -> {
+          if (args.isBlank()) {
+            iniciar(chatId, formularios.queja());
+            return;
+          }
           String[] p = campos(args, 2, "/quejar donacionId;que paso");
           telegram.sendMessage(chatId, impacto.queja(p[0], p[1]));
         }
@@ -383,6 +442,49 @@ public class DonaTrackBot {
     } catch (RuntimeException e) {
       telegram.sendMessage(chatId, "⚠️ " + e.getMessage());
     }
+  }
+
+  // ── Conversaciones guiadas ─────────────────────────────────────────────────
+
+  /**
+   * Si hay un formulario en curso, lo que la persona escriba es la respuesta a la pregunta
+   * pendiente.
+   *
+   * <p>Si en el medio manda otro comando, se abandona el formulario y se atiende el comando:
+   * insistir con la pregunta sería pelearse con alguien que ya cambió de idea.
+   *
+   * @return true si el mensaje ya quedó atendido acá
+   */
+  private boolean respondeUnFormulario(long chatId, String cmd, String text) {
+    Formulario enCurso = conversaciones.get(chatId);
+    if (enCurso == null) {
+      return false;
+    }
+    if ("/cancelar".equals(cmd)) {
+      conversaciones.remove(chatId);
+      telegram.sendMessage(chatId, "Listo, lo dejamos acá. /help para ver qué más podés hacer.");
+      return true;
+    }
+    if (text.startsWith("/")) {
+      conversaciones.remove(chatId);
+      return false;
+    }
+    try {
+      telegram.sendMessage(chatId, enCurso.responder(text));
+    } finally {
+      // Aunque la operación falle: el formulario ya se consumió y la persona tiene que poder
+      // volver a empezar en vez de quedar atrapada contestando preguntas que no avanzan.
+      if (enCurso.termino()) {
+        conversaciones.remove(chatId);
+      }
+    }
+    return true;
+  }
+
+  /** Arranca una conversación guiada y hace la primera pregunta. */
+  private void iniciar(long chatId, Formulario formulario) {
+    conversaciones.put(chatId, formulario);
+    telegram.sendMessage(chatId, formulario.primeraPregunta());
   }
 
   // ── Textos ─────────────────────────────────────────────────────────────────
@@ -411,18 +513,15 @@ public class DonaTrackBot {
         ✅ Sí → /entrar <tu número>
            por ejemplo: /entrar 1
 
-        🆕 No, es mi primera vez →
-           /registrarse nombre;apellido;edad;email;documento;domicilio
-           por ejemplo:
-           /registrarse Juan;Perez;30;juan@mail.com;40123456;Calle 5
+        🆕 No, es mi primera vez → /registrarse
+           Te voy preguntando los datos de a uno, no hace falta que los sepas de memoria.
 
         ¿No te acordás tu número? /donadores te los lista.""";
   }
 
   private String menuDonadorAdentro(Sesion s) {
     return "Esto es lo que podés hacer:\n\n"
-        + "🎁 /donar productoID;cantidad;descripcion\n"
-        + "   por ejemplo: /donar 1;10;Diez kilos de arroz\n"
+        + "🎁 /donar — te voy preguntando qué, cuánto y para qué\n"
         + "📦 /productos — qué se puede donar\n"
         + "📋 /misdonaciones — tus donaciones y su estado\n"
         + "👤 /perfil — tus datos\n"
@@ -445,45 +544,42 @@ public class DonaTrackBot {
     return """
         🛠️ <b>Modo administrador</b>
 
+        Los que dan de alta algo te van preguntando los datos de a uno. /cancelar para dejarlo.
+
         <b>Entidades</b>
-        /crearentidad razonSocial;domicilio;telefono;correo
-        /editarentidad id;razonSocial;domicilio;telefono;correo
-        /entidad <número>
-        /entidades
+        /crearentidad — alta guiada
+        /editarentidad — cambiar sus datos
+        /entidad <número> · /entidades
 
         <b>Necesidades</b>
-        /altanecesidad entidadID;urgencia;descripcion;cantidadObjetivo;productoID;tipo
-        /modificarnecesidad id;urgencia;descripcion;cantidadObjetivo;productoID;tipo
-        /necesidad <número>
-        /borrarnecesidad <número>
+        /altanecesidad — alta guiada
+        /modificarnecesidad — cambiarla
+        /necesidad <número> · /borrarnecesidad <número>
 
         <b>Donadores</b>
         /donadores — todos
         /donador <número> — uno
-        /estadisticas <número>
-        /quejas <número>
-        /estadodonador id;VERIFICADO|SOSPECHOSO|BANEADO
+        /estadisticas <número> · /quejas <número>
+        /estadodonador — verificado, sospechoso o baneado
         /categoriadonador id;categoria
         /procesardonador <número>
 
         <b>Logística</b>
         /depositos — depósitos y capacidad
         /stock <productoID> — stock disponible
-        /reportarentrega donacionId;productoId;cantidad
-        /creardeposito id;nombre;direccion;capacidad
+        /reportarentrega — cerrar una donación entregada
+        /creardeposito — alta guiada
         /algoritmo depositoId;SUB_ATENDIDOS|PRIORIDAD_POR_SCORE
 
         <b>Incentivos</b>
-        /insignias — catálogo de insignias
-        /misiones — misiones activas
-        /crearinsignia id;nombre;descripcion
-        /crearmision id;nombre;insigniaID;categoriaInicio;categoriaFin
+        /insignias · /misiones — los catálogos
+        /crearinsignia · /crearmision — altas guiadas
 
         <b>Catálogo de donaciones</b>
-        /donarcomo donadorID;productoID;cantidad;descripcion
+        /donarcomo — donar a nombre de otro
+        /crearproducto — alta guiada
         /crearidentificador CODIGODEBARRAS|QR;descripcion
-        /crearproducto nombre;descripcion;categoria;identificadorID
-        /quejar donacionId;que paso
+        /quejar — reclamar por una donación
 
         <b>Demostración</b>
         /demo — el guion, paso por paso

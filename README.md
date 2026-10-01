@@ -21,6 +21,16 @@ Variables de entorno (o editar `src/main/resources/application.properties`):
 | `INCENTIVOS_URL` | la de Render | URL del módulo Incentivos, para consultar insignias, misiones y procesar donadores. |
 | `DEPOSITO_DEFAULT` | `DEP-UTN-01` | Depósito al que van las donaciones hechas desde el bot. |
 
+El bot habla con los **cuatro** módulos: hay un cliente HTTP por cada uno. La única URL que hace
+falta pasar es `DONADORES_URL`, porque es la única cuyo default apunta a `localhost`; las otras
+tres ya apuntan a Render.
+
+**Si te olvidás de `DONADORES_URL`, el bot arranca igual.** Falla recién al usarlo, y falla en
+casi todo —sesión, donadores, entidades, necesidades, estadísticas— porque Donadores es el módulo
+que más se consulta. El síntoma es un error de conexión contra `localhost:8080`, que no se parece
+a un problema de configuración. Es el default más peligroso de los cuatro y conviene cambiarlo
+por el de Render.
+
 ## Cómo correrlo
 
 Desde la carpeta del proyecto, en **PowerShell** (no en CMD):
@@ -46,15 +56,30 @@ Luego, en Telegram, buscá tu bot y mandá `/start`. Para detenerlo, Ctrl+C.
 
 `/start` y elegís rol: `/soy_donador` o `/soy_admin`.
 
+**Los comandos que piden varios datos te los preguntan de a uno.** Escribís `/registrarse` y el
+bot pregunta el nombre, después el apellido, después la edad. Si te equivocás en uno, te avisa
+ahí mismo y vuelve a preguntar ese, sin perder lo anterior. `/cancelar` en cualquier momento.
+
+```
+vos  /registrarse
+bot  1 de 6 · ¿Cómo te llamás?
+vos  Juan
+bot  2 de 6 · ¿Y tu apellido?
+...
+bot  🎉 Listo Juan, quedaste registrado con el número 7.
+```
+
+Donde hace falta un número que no se sabe de memoria —un producto, una entidad, un donador— el
+bot muestra el listado junto con la pregunta.
+
+> Los mismos comandos aceptan todos los datos en una línea separados por `;`, que es más rápido
+> para una demostración: `/donar 1;10;Diez kilos de arroz`. Las dos formas hacen lo mismo.
+
 ### Donador
 
-El donador **entra con su número** y el bot lo recuerda: después dona y consulta lo suyo
-sin repetir quién es.
-
 - `/entrar <número>` — si ya está registrado
-- `/registrarse nombre;apellido;edad;email;documento;domicilio` — la primera vez; queda
-  identificado automáticamente
-- `/donar productoID;cantidad;descripcion`
+- `/registrarse` — la primera vez; queda identificado automáticamente
+- `/donar` — qué, cuánto y para qué
 - `/productos` — qué se puede donar
 - `/misdonaciones` — las suyas, con el estado de cada una
 - `/perfil` — sus datos
@@ -64,36 +89,37 @@ sin repetir quién es.
 
 ### Admin
 
-- `/crearentidad razonSocial;domicilio;telefono;correo`
-- `/editarentidad id;razonSocial;domicilio;telefono;correo`
-- `/entidad <id>` · `/entidades`
-- `/altanecesidad entidadID;urgencia;descripcion;cantidadObjetivo;productoID;tipo`
-- `/modificarnecesidad id;urgencia;descripcion;cantidadObjetivo;productoID;tipo`
-- `/necesidad <id>` · `/borrarnecesidad <id>`
+**Entidades y necesidades**
+
+- `/crearentidad` · `/editarentidad` · `/entidad <id>` · `/entidades`
+- `/altanecesidad` · `/modificarnecesidad` · `/necesidad <id>` · `/borrarnecesidad <id>`
+
+**Donadores**
+
 - `/donadores` · `/donador <id>` · `/estadisticas <id>` · `/quejas <id>`
-- `/estadodonador id;VERIFICADO|SOSPECHOSO|BANEADO`
+- `/estadodonador` — verificado, sospechoso o baneado
 - `/categoriadonador id;categoria`
-- `/quejar donacionId;que paso`
+- `/quejar` — reclamar por una donación entregada
 
 **Catálogo de Donaciones**
 
 - `/crearidentificador CODIGODEBARRAS|QR;descripcion`
-- `/crearproducto nombre;descripcion;categoria;identificadorID`
+- `/crearproducto` — alta guiada
+- `/donarcomo` — donar a nombre de otro, sin cambiar de rol
 
 **Logística**
 
 - `/depositos` · `/stock <productoID>`
-- `/creardeposito id;nombre;direccion;capacidad`
+- `/creardeposito` — alta guiada
 - `/algoritmo depositoId;SUB_ATENDIDOS|PRIORIDAD_POR_SCORE` — el criterio con el que ese
   depósito elige a qué necesidad le asigna cada donación
-- `/reportarentrega donacionId;productoId;cantidad` — el paquete no se pide: Logística lo
-  nombra `paq-` más el número de la donación
+- `/reportarentrega` — el paquete no se pide: Logística lo nombra `paq-` más el número de la
+  donación
 
 **Incentivos**
 
 - `/insignias` · `/misiones`
-- `/crearinsignia id;nombre;descripcion`
-- `/crearmision id;nombre;insigniaID;categoriaInicio;categoriaFin`
+- `/crearinsignia` · `/crearmision` — altas guiadas
 - `/procesardonador <donadorId>`
 
 > `tipo` de necesidad: `EXTRAORDINARIA` o `RECURRENTE`.
@@ -109,35 +135,24 @@ Comandos para conducir una demostración sin preparar nada a mano:
 | `/reiniciar` | Vacía las bases de los cuatro módulos (admin) |
 | `/preparar` | Carga las precondiciones de todos los flujos (admin) |
 | `/estado` | Cómo está el sistema ahora mismo, módulo por módulo |
-| `/donarcomo donadorID;productoID;cantidad;descripcion` | Donar a nombre de otro, para que el admin recorra los flujos sin cambiar de rol |
 
 **Las operaciones cuentan qué provocaron.** Donar, reportar una entrega, quejarse o procesar un
 donador no devuelven el JSON del módulo que las recibió, sino un resumen de qué cambió en cada
-uno: el estado de la donación, si Logística la asignó o la guardó, cómo quedó la necesidad y qué
-insignias se movieron. Cada operación viaja además con un número de traza. Donaciones y Donadores la
-escriben en sus logs, así que buscándola en Datadog se ve qué hizo cada uno. Logística e
+uno: el estado de la donación, a qué necesidad la mandó Logística, cómo quedó esa necesidad y qué
+insignias se movieron. Cada operación viaja además con un número de traza. Donaciones y Donadores
+la escriben en sus logs, así que buscándola en Datadog se ve qué hizo cada uno. Logística e
 Incentivos todavía no la propagan: una entrega o un procesamiento no se pueden seguir enteros.
 
-Ejemplo de donador:
-```
-/start
-/soy_donador
-/registrarse Juan;Perez;30;juan@mail.com;40123456;Calle 5
-/productos
-/donar 1;10;Diez kilos de arroz
-/misdonaciones
-```
-
-Ejemplo de admin, que es tambien el recorrido de la demostracion:
+Recorrido completo de una demostración, como admin:
 ```
 /start
 /soy_admin
+/despertar
 /reiniciar
 /preparar
-/estado
-/donarcomo 1;1;10;Diez kilos de arroz
-/reportarentrega 1;1;10
-/quejar 1;Llego en mal estado
+/donarcomo
+/reportarentrega
+/quejar
 /procesardonador 1
 ```
 

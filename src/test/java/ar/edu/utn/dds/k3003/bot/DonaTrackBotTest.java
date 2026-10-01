@@ -40,7 +40,12 @@ class DonaTrackBotTest {
     // el que un módulo no contesta, que es el que más se va a dar en la demostración.
     Impacto impacto = new Impacto(donaciones, api, logistica, incentivos);
     Demo demo = new Demo(donaciones, api, logistica, incentivos, "DEP-TEST");
-    bot = new DonaTrackBot(telegram, api, donaciones, logistica, incentivos, impacto, demo, "DEP-TEST");
+    Formularios formularios =
+        new Formularios(api, donaciones, logistica, incentivos, impacto, "DEP-TEST");
+    bot =
+        new DonaTrackBot(
+            telegram, api, donaciones, logistica, incentivos, impacto, demo, formularios,
+            "DEP-TEST");
   }
 
   // ── Entrada ────────────────────────────────────────────────────────────────
@@ -78,6 +83,110 @@ class DonaTrackBotTest {
     bot.handle(1L, "/registrarse Juan;Perez;30;j@x.com;123;Calle 5");
 
     verify(telegram).sendMessage(eq(1L), contains("número <b>7</b>"));
+  }
+
+  // ── Conversaciones guiadas ─────────────────────────────────────────────────
+
+  @Test
+  @DisplayName("/registrarse sin datos pregunta de a uno y al final registra")
+  void registroGuiado() {
+    when(api.registrarDonadorRaw("Juan", "Perez", 30, "j@x.com", "40123456", "Calle 5"))
+        .thenReturn("{\"id\":\"7\",\"nombre\":\"Juan\"}");
+
+    bot.handle(1L, "/soy_donador");
+    bot.handle(1L, "/registrarse");
+    verify(telegram).sendMessage(eq(1L), contains("¿Cómo te llamás?"));
+
+    bot.handle(1L, "Juan");
+    bot.handle(1L, "Perez");
+    bot.handle(1L, "30");
+    bot.handle(1L, "j@x.com");
+    bot.handle(1L, "40123456");
+    bot.handle(1L, "Calle 5");
+
+    verify(api).registrarDonadorRaw("Juan", "Perez", 30, "j@x.com", "40123456", "Calle 5");
+    verify(telegram).sendMessage(eq(1L), contains("número <b>7</b>"));
+
+    // Y quedó identificado, igual que con el comando de una sola línea.
+    bot.handle(1L, "/perfil");
+    verify(api).buscarDonador("7");
+  }
+
+  @Test
+  @DisplayName("Un dato con la forma equivocada se vuelve a pedir y no corta el registro")
+  void registroConUnDatoMal() {
+    bot.handle(1L, "/soy_donador");
+    bot.handle(1L, "/registrarse");
+    bot.handle(1L, "Juan");
+    bot.handle(1L, "Perez");
+
+    bot.handle(1L, "treinta y pico");
+
+    verify(telegram).sendMessage(eq(1L), contains("número entero"));
+    verify(api, never())
+        .registrarDonadorRaw(anyString(), anyString(), anyInt(), anyString(), anyString(), anyString());
+  }
+
+  @Test
+  @DisplayName("/cancelar deja el formulario a medio hacer sin ejecutar nada")
+  void cancelarUnFormulario() {
+    bot.handle(1L, "/soy_donador");
+    bot.handle(1L, "/registrarse");
+    bot.handle(1L, "Juan");
+
+    bot.handle(1L, "/cancelar");
+
+    verify(telegram).sendMessage(eq(1L), contains("lo dejamos acá"));
+    verify(api, never())
+        .registrarDonadorRaw(anyString(), anyString(), anyInt(), anyString(), anyString(), anyString());
+  }
+
+  @Test
+  @DisplayName("Mandar otro comando en el medio abandona el formulario y atiende el comando")
+  void otroComandoEnElMedio() {
+    when(donaciones.listarProductos()).thenReturn("[]");
+    bot.handle(1L, "/soy_donador");
+    bot.handle(1L, "/registrarse");
+    bot.handle(1L, "Juan");
+
+    bot.handle(1L, "/productos");
+
+    verify(donaciones).listarProductos();
+    // Lo que escriba después ya no es una respuesta al formulario abandonado.
+    bot.handle(1L, "Perez");
+    verify(telegram).sendMessage(eq(1L), contains("No conozco ese comando"));
+  }
+
+  @Test
+  @DisplayName("/donar guiado dona a nombre de quien está en la sesión")
+  void donarGuiado() {
+    when(api.buscarDonador("1")).thenReturn(ANA);
+    when(donaciones.donar("1", "DEP-TEST", "Diez kilos de arroz", "3", 10))
+        .thenReturn("{\"id\":\"9\",\"cantidad\":10,\"estado\":\"INGRESADA\"}");
+    bot.handle(1L, "/entrar 1");
+
+    bot.handle(1L, "/donar");
+    bot.handle(1L, "3");
+    bot.handle(1L, "10");
+    bot.handle(1L, "Diez kilos de arroz");
+
+    verify(donaciones).donar("1", "DEP-TEST", "Diez kilos de arroz", "3", 10);
+  }
+
+  @Test
+  @DisplayName("La necesidad guiada manda cada dato en su lugar, aunque se pregunten en otro orden")
+  void necesidadGuiada() {
+    bot.handle(1L, "/soy_admin");
+
+    bot.handle(1L, "/altanecesidad");
+    bot.handle(1L, "1"); // entidad
+    bot.handle(1L, "3"); // producto
+    bot.handle(1L, "20"); // cantidad objetivo
+    bot.handle(1L, "Arroz para el comedor"); // descripción
+    bot.handle(1L, "8"); // urgencia
+    bot.handle(1L, "extraordinaria"); // tipo
+
+    verify(api).altaNecesidadRaw("1", 8, "Arroz para el comedor", 20, "3", "EXTRAORDINARIA");
   }
 
   // ── Sesión ─────────────────────────────────────────────────────────────────
