@@ -437,7 +437,7 @@ public class DonaTrackBot {
           telegram.sendMessage(chatId, demo.preparar());
         }
 
-        default -> telegram.sendMessage(chatId, "No conozco ese comando. Probá /help");
+        default -> telegram.sendMessage(chatId, noEntendi(s, cmd));
       }
     } catch (RuntimeException e) {
       telegram.sendMessage(chatId, "⚠️ " + e.getMessage());
@@ -538,6 +538,28 @@ public class DonaTrackBot {
       case DONADOR -> s.estaIdentificado() ? menuDonadorAdentro(s) : puertaDonador();
       case NINGUNO -> bienvenida();
     };
+  }
+
+  /**
+   * Qué contestar cuando el mensaje no es ninguno de los comandos conocidos.
+   *
+   * <p>Un chat que todavía no eligió rol recién está llegando, y obligarlo a adivinar que el
+   * primer mensaje tiene que ser /start es perderlo en la puerta: escriba «hola» o se equivoque
+   * de comando, lo que le falta es elegir cómo entrar. Por eso ahí siempre va la bienvenida.
+   *
+   * <p>Con el rol ya elegido sí conviene distinguir: quien escribe «/donarr» se equivocó de
+   * comando y lo que necesita es la lista; quien escribe «hola» no se equivocó de nada, así que
+   * se le repite el menú de su rol.
+   */
+  private String noEntendi(Sesion s, String cmd) {
+    boolean pareceComando = cmd.startsWith("/");
+    if (s.rol() == Sesion.Rol.NINGUNO) {
+      // El aviso nombra /help para que quien erró el comando sepa dónde está la lista completa.
+      return pareceComando
+          ? "❓ No conozco ese comando. /help lista los que hay.\n\n" + bienvenida()
+          : bienvenida();
+    }
+    return pareceComando ? "No conozco ese comando. Probá /help" : menuSegun(s);
   }
 
   private String menuAdmin() {

@@ -152,9 +152,16 @@ class DonaTrackBotTest {
     bot.handle(1L, "/productos");
 
     verify(donaciones).listarProductos();
-    // Lo que escriba después ya no es una respuesta al formulario abandonado.
+
+    // Lo que escriba después ya no es una respuesta al formulario abandonado: con el rol ya
+    // elegido, un texto suelto devuelve el menú de ese rol en vez de seguir preguntando.
     bot.handle(1L, "Perez");
-    verify(telegram).sendMessage(eq(1L), contains("No conozco ese comando"));
+
+    org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
+    verify(telegram, org.mockito.Mockito.atLeastOnce()).sendMessage(eq(1L), captor.capture());
+    org.junit.jupiter.api.Assertions.assertTrue(
+        captor.getValue().contains("/entrar"),
+        "esperaba el menú del donador, no otra pregunta del formulario abandonado");
   }
 
   @Test
@@ -324,6 +331,67 @@ class DonaTrackBotTest {
   void desconocido() {
     bot.handle(1L, "/cualquiercosa");
     verify(telegram).sendMessage(eq(1L), contains("/help"));
+  }
+
+  @Test
+  @DisplayName("Un texto suelto sin rol elegido ofrece elegir entre donador y admin")
+  void textoSueltoSinRol() {
+    // Quien abre el chat por primera vez no tiene por qué saber que el primer mensaje
+    // tiene que ser /start: cualquier cosa que escriba lo tiene que llevar a elegir rol.
+    bot.handle(1L, "hola");
+
+    org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
+    verify(telegram).sendMessage(eq(1L), captor.capture());
+
+    String respuesta = captor.getValue();
+    org.junit.jupiter.api.Assertions.assertTrue(
+        respuesta.contains("/soy_donador"), "tiene que ofrecer entrar como donador");
+    org.junit.jupiter.api.Assertions.assertTrue(
+        respuesta.contains("/soy_admin"), "tiene que ofrecer entrar como admin");
+  }
+
+  @Test
+  @DisplayName("Un texto suelto con el rol ya elegido devuelve el menú de ese rol, no la bienvenida")
+  void textoSueltoConRolElegido() {
+    bot.handle(1L, "/soy_admin");
+
+    bot.handle(1L, "hola");
+
+    org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
+    verify(telegram, org.mockito.Mockito.times(2)).sendMessage(eq(1L), captor.capture());
+
+    String respuesta = captor.getValue();
+    org.junit.jupiter.api.Assertions.assertTrue(
+        respuesta.contains("Modo administrador"), "esperaba el menú del rol que ya eligió");
+    org.junit.jupiter.api.Assertions.assertFalse(
+        respuesta.contains("¿Cómo querés entrar?"), "ya eligió rol: volver a la bienvenida es un paso atrás");
+  }
+
+  @Test
+  @DisplayName("Un comando desconocido con el rol ya elegido sigue mandando a /help")
+  void desconocidoConRolElegido() {
+    bot.handle(1L, "/soy_admin");
+
+    bot.handle(1L, "/donarr");
+
+    verify(telegram).sendMessage(eq(1L), contains("No conozco ese comando"));
+  }
+
+  @Test
+  @DisplayName("Un comando desconocido sin rol elegido ofrece los dos roles y además nombra /help")
+  void desconocidoSinRol() {
+    bot.handle(1L, "/cualquiercosa");
+
+    org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
+    verify(telegram).sendMessage(eq(1L), captor.capture());
+
+    String respuesta = captor.getValue();
+    org.junit.jupiter.api.Assertions.assertTrue(
+        respuesta.contains("/soy_donador"), "sin rol elegido, el error también tiene que ofrecer entrar");
+    org.junit.jupiter.api.Assertions.assertTrue(
+        respuesta.contains("/soy_admin"), "sin rol elegido, el error también tiene que ofrecer entrar");
+    org.junit.jupiter.api.Assertions.assertTrue(
+        respuesta.contains("/help"), "el comando erró: tiene que decir dónde está la lista");
   }
 
   @Test
