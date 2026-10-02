@@ -305,13 +305,18 @@ class Demo {
         <b>Los flujos, en orden</b>
         1. /altanecesidad — una entidad pide algo
         2. /donarcomo — el flujo principal: toca tres módulos
-        3. /reportarentrega — recién acá la necesidad se satisface
-        4. /quejar — la donación deja de estar aceptada
+        3. /reportarentrega — recién acá la necesidad se satisface y la donación queda entregada
+        4. /quejar — sobre la donación entregada en el paso 3: solo se puede quejar de una
+           donación entregada, y deja de estar aceptada
         5. /procesardonador — Incentivos evalúa la misión
         6. /misestadisticas — cómo quedó el donador
 
         Cada operación muestra qué cambió en cada módulo y el número de traza, que sirve para
         buscar esa misma operación en los logs de Datadog.
+
+        Con 5 quejas el donador queda sospechoso y con 10 baneado. Cada queja tiene que ser
+        sobre una donación entregada distinta, así que para mostrar un baneo es más rápido
+        /estadodonador.
         """;
   }
 

@@ -326,7 +326,12 @@ final class Formato {
     return v.isBlank() || "null".equals(v) ? "—" : esc(v);
   }
 
-  private static String esc(String s) {
+  /**
+   * Package-private para que los clientes de la API escapen también los mensajes de error: el
+   * motivo de un rechazo viene del módulo y puede traer un {@code <} que Telegram tomaría como
+   * etiqueta.
+   */
+  static String esc(String s) {
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
   }
 

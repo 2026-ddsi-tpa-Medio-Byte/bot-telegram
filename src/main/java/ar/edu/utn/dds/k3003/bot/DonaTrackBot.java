@@ -420,7 +420,8 @@ public class DonaTrackBot {
             iniciar(chatId, formularios.queja());
             return;
           }
-          String[] p = campos(args, 2, "/quejar donacionId;que paso");
+          String[] p =
+              campos(args, 2, "/quejar donacionId;que paso (sobre una donación ya entregada)");
           telegram.sendMessage(chatId, impacto.queja(p[0], p[1]));
         }
 
@@ -601,7 +602,7 @@ public class DonaTrackBot {
         /donarcomo — donar a nombre de otro
         /crearproducto — alta guiada
         /crearidentificador CODIGODEBARRAS|QR;descripcion
-        /quejar — reclamar por una donación
+        /quejar — reclamar por una donación ya entregada
 
         <b>Demostración</b>
         /demo — el guion, paso por paso

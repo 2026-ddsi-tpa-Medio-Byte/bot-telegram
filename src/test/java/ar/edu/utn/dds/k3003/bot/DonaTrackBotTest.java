@@ -533,6 +533,35 @@ class DonaTrackBotTest {
   }
 
   @Test
+  @DisplayName("El menú, el guion y la queja guiada avisan que la queja es sobre una donación entregada")
+  void quejaSobreDonacionEntregada() {
+    org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
+
+    bot.handle(1L, "/soy_admin");
+    bot.handle(1L, "/demo");
+    bot.handle(1L, "/quejar");
+
+    verify(telegram, org.mockito.Mockito.times(3)).sendMessage(eq(1L), captor.capture());
+    String menu = captor.getAllValues().get(0);
+    String guion = captor.getAllValues().get(1);
+    String pregunta = captor.getAllValues().get(2);
+
+    org.junit.jupiter.api.Assertions.assertTrue(
+        menu.contains("/quejar — reclamar por una donación ya entregada"), menu);
+    org.junit.jupiter.api.Assertions.assertTrue(
+        guion.indexOf("/reportarentrega") < guion.indexOf("/quejar"),
+        "la queja necesita una donación ya entregada: el guion tiene que entregarla antes");
+    org.junit.jupiter.api.Assertions.assertTrue(guion.contains("donación entregada"));
+    org.junit.jupiter.api.Assertions.assertTrue(
+        pregunta.contains("Tiene que estar entregada"),
+        "mejor saberlo antes de escribir la queja que enterarse del rechazo al final");
+    for (String mensaje : captor.getAllValues()) {
+      org.junit.jupiter.api.Assertions.assertFalse(
+          mensaje.contains("*"), "sin asteriscos de Markdown: rompen los comandos con _");
+    }
+  }
+
+  @Test
   @DisplayName("/despertar consulta los cuatro módulos para sacarlos del sueño de Render")
   void despertarModulos() {
     bot.handle(1L, "/despertar");

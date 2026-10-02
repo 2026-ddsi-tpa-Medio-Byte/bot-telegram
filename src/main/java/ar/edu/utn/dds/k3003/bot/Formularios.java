@@ -95,11 +95,16 @@ class Formularios {
         Campo.texto("Describí la donación"));
   }
 
+  /**
+   * Se avisa de entrada que la donación tiene que estar entregada para no hacer escribir la queja
+   * entera y recién al final enterarse del rechazo. El bot no lo controla: lo decide Donaciones.
+   */
   Formulario queja() {
     return new Formulario(
-        "Queja sobre una donación",
+        "Queja sobre una donación entregada",
         r -> impacto.queja(r.get(0), r.get(1)),
-        Campo.numero("¿Sobre qué donación es la queja? Pasame su número"),
+        Campo.numero(
+            "¿Sobre qué donación es la queja? Tiene que estar entregada. Pasame su número"),
         Campo.texto("¿Qué pasó con esa donación?"));
   }
 

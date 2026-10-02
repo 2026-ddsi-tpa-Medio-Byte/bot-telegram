@@ -303,11 +303,37 @@ public class DonadoresApiClient {
     }
   }
 
+  /**
+   * Donadores contesta los errores en texto plano, así que el cuerpo ya es el motivo.
+   *
+   * <p>El 404 lleva el motivo porque ahora lo usan más casos: borrar una necesidad que no existe
+   * antes era un 400 que mostraba el mensaje, y con un «No encontrado.» pelado se perdía. El 409 es
+   * el alta de un donador repetido, y lo que suele pasar ahí es alguien que ya estaba registrado.
+   */
   private String traducir(HttpStatusCodeException e) {
-    if (e.getStatusCode().value() == 404) {
-      return "No encontrado.";
+    int codigo = e.getStatusCode().value();
+    String motivo = resumir(e.getResponseBodyAsString());
+    if (codigo == 404) {
+      return motivo.isBlank() ? "No encontrado." : "No encontrado: " + Formato.esc(motivo);
     }
-    return "Solicitud rechazada (" + e.getStatusCode().value() + "): " + e.getResponseBodyAsString();
+    if (codigo == 409) {
+      return "No se pudo: "
+          + Formato.esc(motivo)
+          + (motivo.contains("donador")
+              ? "\n\nSi ya estabas registrado no hace falta hacerlo de nuevo: entrá con /entrar y "
+                  + "tu número (/donadores los lista)."
+              : "");
+    }
+    return "Solicitud rechazada (" + codigo + "): " + Formato.esc(motivo);
+  }
+
+  /** Un stack trace o una página de error entera no le sirven a nadie en un chat. */
+  private static String resumir(String cuerpo) {
+    if (cuerpo == null || cuerpo.isBlank()) {
+      return "";
+    }
+    String limpio = cuerpo.trim();
+    return limpio.length() > 300 ? limpio.substring(0, 300) + "..." : limpio;
   }
 
   private String sinConexion() {
