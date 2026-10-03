@@ -113,7 +113,22 @@ class Demo {
 
   // ── Reiniciar ──────────────────────────────────────────────────────────────
 
+  /** Lo que se espera antes de repetir un borrado: Render a veces contesta 502 mientras arranca. */
+  private static final long PAUSA_ANTES_DE_REPETIR_MS = 2000;
+
+  /** Cómo terminó el borrado de un módulo. Sin motivo y sin listo, es que no contestó a tiempo. */
+  private record Borrado(boolean listo, String motivo) {}
+
+  private static final Borrado BORRADO = new Borrado(true, null);
+  private static final Borrado SIN_RESPUESTA = new Borrado(false, null);
+
   String reiniciar() {
+    // Primero se despiertan con consultas, como en preparar: en Render el primer pedido a un
+    // servicio dormido se pierde despertándolo, y si ese pedido es el borrado, el chat se queda
+    // esperando hasta darlo por perdido. Se borra igual aunque alguno no haya contestado: la
+    // consulta que se cortó ya lo puso a arrancar, y para el borrado puede estar listo.
+    Map<String, Boolean> despiertos = contactar();
+
     // Cada módulo tiene su propia base: no hay un orden que respetar, y en paralelo uno caído no
     // deja el chat esperando por los otros tres.
     Map<String, Supplier<String>> borrados = new java.util.LinkedHashMap<>();
@@ -122,29 +137,89 @@ class Demo {
     borrados.put("Logística", logistica::limpiarBase);
     borrados.put("Incentivos", incentivos::limpiar);
 
-    Map<String, java.util.concurrent.CompletableFuture<String>> pendientes =
+    Map<String, java.util.concurrent.CompletableFuture<Borrado>> pendientes =
         new java.util.LinkedHashMap<>();
     borrados.forEach(
         (modulo, borrado) ->
             pendientes.put(
                 modulo,
-                java.util.concurrent.CompletableFuture.supplyAsync(() -> intentar(modulo, borrado))
+                java.util.concurrent.CompletableFuture.supplyAsync(() -> borrar(borrado))
                     .completeOnTimeout(
-                        "⚠️ <b>" + modulo + "</b> · no contestó a tiempo\n",
+                        SIN_RESPUESTA,
                         ESPERA_AL_DESPERTAR_SEGUNDOS,
                         java.util.concurrent.TimeUnit.SECONDS)));
 
-    StringBuilder sb = new StringBuilder("🧹 <b>Sistema reiniciado</b>\n\n");
-    pendientes.forEach((modulo, futuro) -> sb.append(futuro.join()));
-    return sb.append("\nAhora /preparar para cargar las precondiciones.\n").toString();
+    StringBuilder detalle = new StringBuilder();
+    boolean todoBorrado = true;
+    boolean hayDormidos = false;
+    for (Map.Entry<String, java.util.concurrent.CompletableFuture<Borrado>> pendiente :
+        pendientes.entrySet()) {
+      String modulo = pendiente.getKey();
+      Borrado resultado = pendiente.getValue().join();
+      if (resultado.listo()) {
+        detalle.append("✅ <b>").append(modulo).append("</b> · borrado\n");
+        continue;
+      }
+      todoBorrado = false;
+      // Si no contestó ni a la consulta ni al borrado, lo más probable es que siga arrancando. Si
+      // contestó la consulta y rechazó el borrado, el motivo lo dice el módulo.
+      if (resultado.motivo() == null || !despiertos.getOrDefault(modulo, false)) {
+        hayDormidos = true;
+        detalle
+            .append("😴 <b>")
+            .append(modulo)
+            .append("</b> · no contestó: está dormido o caído\n");
+      } else {
+        detalle
+            .append("⚠️ <b>")
+            .append(modulo)
+            .append("</b> · ")
+            .append(resultado.motivo())
+            .append("\n");
+      }
+    }
+
+    if (todoBorrado) {
+      return "🧹 <b>Sistema reiniciado</b>\n\n"
+          + detalle
+          + "\nAhora /preparar para cargar las precondiciones.\n";
+    }
+    // No se sugiere /preparar: cargar sobre una base a medio borrar mezcla datos viejos y nuevos.
+    return "🧹 <b>Reinicio incompleto</b>\n\n"
+        + detalle
+        + "\n"
+        + (hayDormidos ? "Render tarda uno o dos minutos en despertar un servicio. " : "")
+        + "Repetí /reiniciar en un minuto: borrar de nuevo lo que ya quedó vacío no cambia nada.\n";
   }
 
-  private String intentar(String modulo, Supplier<String> operacion) {
+  /**
+   * Borra, y si falla lo intenta una vez más.
+   *
+   * <p>Repetirlo es seguro porque borrar es idempotente: dos borrados dejan la base igual de vacía
+   * que uno. Con un alta no se podría, porque sin respuesta no se sabe si llegó, y repetirla puede
+   * dejar dos donde había una.
+   */
+  private Borrado borrar(Supplier<String> borrado) {
     try {
-      operacion.get();
-      return "✅ <b>" + modulo + "</b> · borrado\n";
-    } catch (Exception e) {
-      return "⚠️ <b>" + modulo + "</b> · " + e.getMessage() + "\n";
+      borrado.get();
+      return BORRADO;
+    } catch (Exception primera) {
+      esperar(PAUSA_ANTES_DE_REPETIR_MS);
+      try {
+        borrado.get();
+        return BORRADO;
+      } catch (Exception segunda) {
+        String motivo = segunda.getMessage();
+        return new Borrado(false, motivo == null ? "falló sin decir por qué" : motivo);
+      }
+    }
+  }
+
+  private static void esperar(long milisegundos) {
+    try {
+      Thread.sleep(milisegundos);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
     }
   }
 
@@ -180,15 +255,17 @@ class Demo {
 
       String doc = String.valueOf(suf);
       doc = doc.length() > 8 ? doc.substring(doc.length() - 8) : doc;
+      // Con Donadores van las versiones Raw: las otras le anteponen «Donador registrado: » al
+      // JSON, y leerle el id a eso cortaba /preparar justo después del producto.
       String donadorId =
           id(
-              donadores.registrarDonador(
+              donadores.registrarDonadorRaw(
                   "Carlos", "Demo", 35, "carlos" + suf + "@demo.com", doc, "Av Corrientes 1234"));
       sb.append("🙋 Donador <b>").append(donadorId).append("</b> · Carlos Demo\n");
 
       String entidadId =
           id(
-              donadores.crearEntidad(
+              donadores.crearEntidadRaw(
                   "Comedor Solidario " + suf, "Av Rivadavia 5000", "1144445555", "c" + suf + "@d.com"));
       sb.append("🏢 Entidad <b>").append(entidadId).append("</b>\n");
 
@@ -216,15 +293,16 @@ class Demo {
 
       String necesidadId =
           id(
-              donadores.altaNecesidad(
+              donadores.altaNecesidadRaw(
                   entidadId, 8, "Arroz para el comedor mensual", 20, prodId, "EXTRAORDINARIA"));
       sb.append("📋 Necesidad <b>").append(necesidadId).append("</b> · 20 unidades\n");
 
-      sb.append("\nSeguí con: <code>/donarcomo ")
+      // El comando guiado pide los datos de a uno; lo que hay que tener a mano son los números.
+      sb.append("\nSeguí con /donarcomo: cuando te pregunte, el donador es el <b>")
           .append(donadorId)
-          .append(";")
+          .append("</b> y el producto el <b>")
           .append(prodId)
-          .append(";10;Diez kilos de arroz</code>\n");
+          .append("</b>.\n");
       return sb.toString();
     } catch (Exception e) {
       return sb + "\n⚠️ Se cortó acá: " + e.getMessage();
@@ -322,8 +400,19 @@ class Demo {
 
   // ── Auxiliares ─────────────────────────────────────────────────────────────
 
+  /**
+   * El número de lo que se acaba de crear. Necesita el JSON tal cual lo devuelve el módulo: un
+   * método que le anteponga un texto no sirve acá.
+   *
+   * <p>Sin id se corta en vez de seguir: el paso siguiente lo usaría vacío y el error aparecería
+   * más adelante, lejos de su causa.
+   */
   private String id(String respuesta) throws Exception {
-    return MAPPER.readTree(respuesta).path("id").asText();
+    String id = MAPPER.readTree(respuesta).path("id").asText("");
+    if (id.isBlank()) {
+      throw new IllegalStateException("el módulo no devolvió el número de lo que creó");
+    }
+    return id;
   }
 
   /** Con límite de espera: un módulo caído tarda minutos, y el estado es lo primero que se mira. */

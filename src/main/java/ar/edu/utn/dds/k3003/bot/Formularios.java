@@ -2,6 +2,7 @@ package ar.edu.utn.dds.k3003.bot;
 
 import ar.edu.utn.dds.k3003.bot.Formulario.Campo;
 import com.fasterxml.jackson.databind.JsonNode;
+import java.util.List;
 import java.util.function.Supplier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -149,7 +150,103 @@ class Formularios {
         Campo.opcion("¿Qué estado le ponemos?", "VERIFICADO", "SOSPECHOSO", "BANEADO"));
   }
 
+  /**
+   * Las categorías de {@code CategoriaDonadorEnum} de cátedra, en su orden.
+   *
+   * <p>Solo se ofrecen: Donadores guarda la categoría como texto libre, así que lo que se escriba
+   * fuera de la lista se manda igual y aceptarlo o no es cosa del módulo.
+   */
+  private static final List<String> CATEGORIAS =
+      List.of("OCASIONAL", "COLABORADOR", "TRANSFORMADOR", "SALVADOR", "REVOLUCIONARIO");
+
+  Formulario categoriaDonador() {
+    return new Formulario(
+        "Cambiar la categoría de un donador",
+        r -> cambiarCategoria(r.get(0), r.get(1)),
+        Campo.numero("¿Qué donador? Pasame su número").conAyuda(this::listaDonadores),
+        Campo.numerada(
+            "¿Qué categoría le ponemos?",
+            CATEGORIAS.stream().map(c -> c.charAt(0) + c.substring(1).toLowerCase()).toList(),
+            t -> !t.isBlank()));
+  }
+
+  /** Lo que hacen el formulario y el atajo en una línea: los dos terminan acá. */
+  String cambiarCategoria(String donadorId, String eleccion) {
+    String json =
+        donadores.cambiarCategoriaDonador(donadorId, Formulario.elegida(eleccion, CATEGORIAS));
+    return "✅ Categoría cambiada\n\n" + Formato.donador(json);
+  }
+
   // ── Admin: catálogo, logística e incentivos ────────────────────────────────
+
+  /** Los dos tipos de identificador de Donaciones, en el orden en que se ofrecen. */
+  private static final List<String> TIPOS_DE_IDENTIFICADOR = List.of("CODIGODEBARRAS", "QR");
+
+  /**
+   * La regla de cada tipo se avisa al elegirlo, antes de crear productos con él. Es solo
+   * informativa: la aplica Donaciones al crear el producto.
+   */
+  Formulario identificador() {
+    return new Formulario(
+        "Nuevo identificador",
+        r -> crearIdentificador(r.get(0), r.get(1)),
+        Campo.numerada(
+            "¿De qué tipo es?",
+            List.of(
+                "Código de barras: la descripción de cada producto va a necesitar 3 o más palabras",
+                "QR: el nombre de cada producto va a necesitar una cantidad par de letras"),
+            t -> TIPOS_DE_IDENTIFICADOR.contains(Formulario.elegida(t, TIPOS_DE_IDENTIFICADOR))),
+        Campo.texto("¿Qué descripción le ponemos? Por ejemplo «Código EAN del arroz»"));
+  }
+
+  /** Lo que hacen el formulario y el atajo en una línea: los dos terminan acá. */
+  String crearIdentificador(String eleccion, String descripcion) {
+    String tipo = Formulario.elegida(eleccion, TIPOS_DE_IDENTIFICADOR).toUpperCase();
+    return "✅ Identificador creado\n\n"
+        + Formato.identificador(donaciones.crearIdentificador(tipo, descripcion))
+        + "\n\nYa se puede usar al dar de alta un producto con /crearproducto.";
+  }
+
+  /** Los dos algoritmos de Logística, en el orden en que se ofrecen. */
+  private static final List<String> ALGORITMOS =
+      List.of(LogisticaApiClient.SUBATENDIDOS, LogisticaApiClient.PRIOSCORE);
+
+  Formulario algoritmo() {
+    return new Formulario(
+        "Algoritmo de un depósito",
+        r -> configurarAlgoritmo(r.get(0), r.get(1)),
+        Campo.texto(
+                "¿Qué depósito? Pasame su identificador (el de las donaciones del bot es "
+                    + depositoPorDefecto
+                    + ")")
+            .conAyuda(this::listaDepositos),
+        Campo.numerada(
+            "¿Con qué criterio elige a qué necesidad le manda cada donación?",
+            List.of("Sub-atendidos", "Prioridad por score"),
+            t -> ALGORITMOS.contains(algoritmoElegido(t))));
+  }
+
+  /** Lo que hacen el formulario y el atajo en una línea: los dos terminan acá. */
+  String configurarAlgoritmo(String depositoId, String eleccion) {
+    String algoritmo = algoritmoElegido(eleccion);
+    logistica.configurarAlgoritmo(depositoId, algoritmo);
+    String nombre =
+        switch (algoritmo) {
+          case LogisticaApiClient.SUBATENDIDOS -> "Sub-atendidos";
+          case LogisticaApiClient.PRIOSCORE -> "Prioridad por score";
+          default -> Formato.esc(algoritmo);
+        };
+    return "⚙️ El depósito <b>"
+        + Formato.esc(depositoId)
+        + "</b> ahora asigna con <b>"
+        + nombre
+        + "</b>.\nEs el criterio con el que elige a cuál necesidad le manda cada donación.";
+  }
+
+  /** El número de la lista o el nombre escrito, con el nombre que espera Logística en /api. */
+  private static String algoritmoElegido(String eleccion) {
+    return LogisticaApiClient.algoritmoEnApi(Formulario.elegida(eleccion, ALGORITMOS));
+  }
 
   Formulario producto() {
     return new Formulario(
@@ -231,6 +328,10 @@ class Formularios {
 
   private String identificadores() {
     return listado(donaciones::listarIdentificadores, "tipo", "Identificadores:");
+  }
+
+  private String listaDepositos() {
+    return listado(logistica::listarDepositos, "nombre", "Depósitos:");
   }
 
   /** Arma «nº — nombre» con los primeros elementos, o nada si el módulo no contesta. */

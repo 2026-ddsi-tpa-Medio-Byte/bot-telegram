@@ -28,6 +28,34 @@ class FormatoTest {
   }
 
   @Test
+  @DisplayName("El donador muestra su categoría, y si todavía no tiene no aparece la línea")
+  void donadorConCategoria() {
+    String conCategoria =
+        """
+        {"id":"1","nombre":"Ana","apellido":"Gomez","estado":"VERIFICADO",
+         "categoria":"TRANSFORMADOR"}""";
+    String sinCategoria =
+        """
+        {"id":"1","nombre":"Ana","apellido":"Gomez","estado":"VERIFICADO","categoria":null}""";
+
+    assertTrue(Formato.donador(conCategoria).contains("Categoría: TRANSFORMADOR"));
+    assertFalse(Formato.donador(sinCategoria).contains("Categoría"), "un guion no dice nada");
+  }
+
+  @Test
+  @DisplayName("Un identificador se muestra legible y recuerda la regla que le pone a los productos")
+  void identificadorLegible() {
+    String qr = "{\"id\":\"11\",\"tipo\":\"QR\",\"descripcion\":\"Etiqueta del frasco\"}";
+
+    String salida = Formato.identificador(qr);
+
+    assertTrue(salida.contains("Identificador nº 11"), salida);
+    assertTrue(salida.contains("QR · Etiqueta del frasco"), salida);
+    assertTrue(salida.contains("cantidad par de letras"), salida);
+    assertFalse(salida.contains("{"), "nada del JSON crudo");
+  }
+
+  @Test
   @DisplayName("El estado del donador se explica, no se muestra pelado")
   void estadoExplicado() {
     String baneado =

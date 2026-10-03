@@ -98,12 +98,12 @@ bot muestra el listado junto con la pregunta.
 
 - `/donadores` · `/donador <id>` · `/estadisticas <id>` · `/quejas <id>`
 - `/estadodonador` — verificado, sospechoso o baneado
-- `/categoriadonador id;categoria`
+- `/categoriadonador` — ofrece las categorías, de ocasional a revolucionario
 - `/quejar` — reclamar por una donación entregada
 
 **Catálogo de Donaciones**
 
-- `/crearidentificador CODIGODEBARRAS|QR;descripcion`
+- `/crearidentificador` — código de barras o QR, alta guiada
 - `/crearproducto` — alta guiada
 - `/donarcomo` — donar a nombre de otro, sin cambiar de rol
 
@@ -111,8 +111,9 @@ bot muestra el listado junto con la pregunta.
 
 - `/depositos` · `/stock <productoID>`
 - `/creardeposito` — alta guiada
-- `/algoritmo depositoId;SUB_ATENDIDOS|PRIORIDAD_POR_SCORE` — el criterio con el que ese
-  depósito elige a qué necesidad le asigna cada donación
+- `/algoritmo` — el criterio con el que un depósito elige a qué necesidad le asigna cada
+  donación: sub-atendidos o prioridad por score. Se configura por `/api`, donde Logística los
+  llama `SUBATENDIDOS` y `PRIOSCORE`; el bot traduce cualquiera de las dos formas de escribirlos
 - `/reportarentrega` — el paquete no se pide: Logística lo nombra `paq-` más el número de la
   donación
 

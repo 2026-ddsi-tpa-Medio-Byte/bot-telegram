@@ -56,6 +56,26 @@ class Formulario {
           null);
     }
 
+    /**
+     * Una lista numerada: se contesta con el número o escribiendo el nombre, y {@link #elegida}
+     * lo traduce.
+     *
+     * <p>Qué respuestas sirven lo decide quien arma el formulario. Cuando el módulo acepta texto
+     * libre, la lista solo se ofrece y cualquier respuesta sirve.
+     */
+    static Campo numerada(String pregunta, List<String> opciones, Predicate<String> acepta) {
+      StringBuilder texto = new StringBuilder(pregunta).append("\n");
+      for (int i = 0; i < opciones.size(); i++) {
+        texto.append("\n").append(i + 1).append(" · ").append(opciones.get(i));
+      }
+      texto.append("\n\nPasame el número o el nombre.");
+      return new Campo(
+          texto.toString(),
+          acepta,
+          "Elegí uno de la lista, del 1 al " + opciones.size() + ".",
+          null);
+    }
+
     /** El mismo campo, mostrando además un listado para elegir. */
     Campo conAyuda(Supplier<String> sugerencias) {
       return new Campo(pregunta, acepta, siNoSirve, sugerencias);
@@ -109,6 +129,39 @@ class Formulario {
 
   boolean termino() {
     return termino;
+  }
+
+  /**
+   * Traduce la respuesta a una lista numerada al valor que corresponde.
+   *
+   * <p>El número elige por posición, y el nombre se reconoce sin importar mayúsculas, tildes,
+   * espacios ni guiones: «código de barras» es CODIGODEBARRAS. Lo que no coincide con ninguno se
+   * devuelve tal cual, para que si no sirve lo diga el módulo y no el bot.
+   *
+   * @param valores lo que se manda al módulo, en el mismo orden en que se numeró la lista
+   */
+  static String elegida(String respuesta, List<String> valores) {
+    String escrita = respuesta.trim();
+    try {
+      int posicion = Integer.parseInt(escrita);
+      if (posicion >= 1 && posicion <= valores.size()) {
+        return valores.get(posicion - 1);
+      }
+    } catch (NumberFormatException e) {
+      // No es un número: se busca por el nombre.
+    }
+    String buscada = comparable(escrita);
+    return valores.stream()
+        .filter(valor -> comparable(valor).equals(buscada))
+        .findFirst()
+        .orElse(escrita);
+  }
+
+  private static String comparable(String texto) {
+    return java.text.Normalizer.normalize(texto, java.text.Normalizer.Form.NFD)
+        .replaceAll("\\p{M}", "")
+        .toUpperCase()
+        .replaceAll("[^A-Z0-9]", "");
   }
 
   private String pregunta(int indice) {

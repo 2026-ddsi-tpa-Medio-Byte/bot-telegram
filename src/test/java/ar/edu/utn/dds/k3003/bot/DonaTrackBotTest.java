@@ -652,8 +652,127 @@ class DonaTrackBotTest {
 
     bot.handle(1L, "/algoritmo DEP-UTN-01;prioridad_por_score");
 
-    verify(logistica).configurarAlgoritmo("DEP-UTN-01", "PRIORIDAD_POR_SCORE");
+    // El nombre con guion bajo es el de /depositos; el algoritmo se configura por /api, que solo
+    // acepta PRIOSCORE. AlgoritmoTest mira lo que viaja en la URL.
+    verify(logistica).configurarAlgoritmo("DEP-UTN-01", "PRIOSCORE");
     verify(telegram).sendMessage(eq(1L), contains("ahora asigna con"));
+  }
+
+  @Test
+  @DisplayName("/categoriadonador guiado ofrece las categorías y se elige con el número o con el nombre")
+  void categoriaGuiada() {
+    when(api.cambiarCategoriaDonador(anyString(), anyString()))
+        .thenReturn(
+            """
+            {"id":"1","nombre":"Ana","apellido":"Gomez","estado":"VERIFICADO",
+             "categoria":"TRANSFORMADOR"}""");
+    org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
+    bot.handle(1L, "/soy_admin");
+
+    bot.handle(1L, "/categoriadonador");
+    bot.handle(1L, "1");
+    bot.handle(1L, "3");
+    bot.handle(1L, "/categoriadonador");
+    bot.handle(1L, "1");
+    bot.handle(1L, "colaborador");
+
+    verify(api).cambiarCategoriaDonador("1", "TRANSFORMADOR");
+    verify(api).cambiarCategoriaDonador("1", "COLABORADOR");
+    verify(telegram, org.mockito.Mockito.atLeastOnce()).sendMessage(eq(1L), captor.capture());
+    String pregunta =
+        captor.getAllValues().stream().filter(m -> m.contains("¿Qué categoría")).findFirst().orElse("");
+    org.junit.jupiter.api.Assertions.assertTrue(pregunta.contains("1 · Ocasional"), pregunta);
+    org.junit.jupiter.api.Assertions.assertTrue(pregunta.contains("5 · Revolucionario"), pregunta);
+    String resultado = captor.getValue();
+    org.junit.jupiter.api.Assertions.assertTrue(resultado.contains("Categoría cambiada"), resultado);
+    org.junit.jupiter.api.Assertions.assertTrue(
+        resultado.contains("Categoría: TRANSFORMADOR"), "tiene que verse la categoría que quedó");
+  }
+
+  @Test
+  @DisplayName("Donadores acepta la categoría como texto libre: una que no está en la lista se manda igual")
+  void categoriaFueraDeLaLista() {
+    bot.handle(1L, "/soy_admin");
+
+    bot.handle(1L, "/categoriadonador");
+    bot.handle(1L, "1");
+    bot.handle(1L, "Leyenda");
+
+    verify(api).cambiarCategoriaDonador("1", "Leyenda");
+  }
+
+  @Test
+  @DisplayName("/crearidentificador guiado pregunta el tipo y muestra el identificador creado, no el JSON")
+  void identificadorGuiado() {
+    when(donaciones.crearIdentificador("CODIGODEBARRAS", "Código EAN del arroz"))
+        .thenReturn(
+            "{\"id\":\"11\",\"tipo\":\"CODIGODEBARRAS\",\"descripcion\":\"Código EAN del arroz\"}");
+    org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
+    bot.handle(1L, "/soy_admin");
+
+    bot.handle(1L, "/crearidentificador");
+    bot.handle(1L, "3");
+    bot.handle(1L, "1");
+    bot.handle(1L, "Código EAN del arroz");
+
+    verify(donaciones).crearIdentificador("CODIGODEBARRAS", "Código EAN del arroz");
+    verify(telegram, org.mockito.Mockito.atLeastOnce()).sendMessage(eq(1L), captor.capture());
+    String pregunta =
+        captor.getAllValues().stream().filter(m -> m.contains("¿De qué tipo")).findFirst().orElse("");
+    org.junit.jupiter.api.Assertions.assertTrue(pregunta.contains("1 · Código de barras"), pregunta);
+    org.junit.jupiter.api.Assertions.assertTrue(pregunta.contains("2 · QR"), pregunta);
+    org.junit.jupiter.api.Assertions.assertTrue(
+        captor.getAllValues().stream().anyMatch(m -> m.contains("del 1 al 2")),
+        "un 3 no es ninguno de los dos tipos: se vuelve a preguntar");
+    String resultado = captor.getValue();
+    org.junit.jupiter.api.Assertions.assertTrue(resultado.contains("Identificador nº 11"), resultado);
+    org.junit.jupiter.api.Assertions.assertTrue(resultado.contains("3 o más palabras"), resultado);
+    org.junit.jupiter.api.Assertions.assertFalse(resultado.contains("{"), "nada del JSON crudo");
+  }
+
+  @Test
+  @DisplayName("Los atajos en una línea de las altas nuevas siguen andando")
+  void atajosEnUnaLinea() {
+    bot.handle(1L, "/soy_admin");
+
+    bot.handle(1L, "/categoriadonador 2;salvador");
+    bot.handle(1L, "/crearidentificador qr;Etiqueta del frasco");
+
+    verify(api).cambiarCategoriaDonador("2", "SALVADOR");
+    verify(donaciones).crearIdentificador("QR", "Etiqueta del frasco");
+  }
+
+  @Test
+  @DisplayName("Ningún menú, el guion ni el catálogo le piden al usuario datos separados por punto y coma")
+  void sinPuntoYComaEnLoQueSeMuestra() {
+    when(api.buscarDonador("1")).thenReturn(ANA);
+    when(donaciones.listarProductos())
+        .thenReturn("[{\"id\":\"3\",\"nombre\":\"Arroz\",\"descripcion\":\"Arroz blanco\"}]");
+    org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
+
+    bot.handle(1L, "/start");
+    bot.handle(1L, "/soy_donador");
+    bot.handle(1L, "/entrar 1");
+    bot.handle(1L, "/productos");
+    bot.handle(2L, "/soy_admin");
+    bot.handle(2L, "/demo");
+
+    verify(telegram, org.mockito.Mockito.atLeast(6)).sendMessage(anyLong(), captor.capture());
+    // Un comando seguido de datos pegados con punto y coma, como «/donar 3;10;arroz». Un punto y
+    // coma en la prosa («se duermen; hacelo...») no le pide nada al usuario.
+    java.util.regex.Pattern atajo = java.util.regex.Pattern.compile("/[a-z_]+ \\S*;");
+    for (String mensaje : captor.getAllValues()) {
+      org.junit.jupiter.api.Assertions.assertFalse(
+          atajo.matcher(mensaje).find(), "las altas son guiadas, el atajo no se enseña: " + mensaje);
+    }
+    String menuAdmin =
+        captor.getAllValues().stream()
+            .filter(m -> m.contains("Modo administrador"))
+            .findFirst()
+            .orElse("");
+    org.junit.jupiter.api.Assertions.assertTrue(menuAdmin.contains("/categoriadonador —"), menuAdmin);
+    org.junit.jupiter.api.Assertions.assertTrue(menuAdmin.contains("/algoritmo —"), menuAdmin);
+    org.junit.jupiter.api.Assertions.assertTrue(menuAdmin.contains("/crearidentificador —"), menuAdmin);
   }
 
   @Test

@@ -47,7 +47,17 @@ final class Formato {
         + "\n"
         + txt(n, "domicilio")
         + "\n"
-        + estadoConIcono(n.path("estado").asText(""));
+        + estadoConIcono(n.path("estado").asText(""))
+        + categoria(n);
+  }
+
+  /**
+   * Sin esto, cambiarle la categoría a un donador devolvía su ficha sin la categoría y no había
+   * forma de ver que el cambio se hizo. Si todavía no tiene, no se muestra: un «—» no dice nada.
+   */
+  private static String categoria(JsonNode n) {
+    String categoria = txt(n, "categoria");
+    return "—".equals(categoria) ? "" : "\n🏅 Categoría: " + categoria;
   }
 
   static String listaDonadores(String json) {
@@ -217,6 +227,44 @@ final class Formato {
           .append(estadoDonacion(n.path("estado").asText("")));
     }
     return sb.toString();
+  }
+
+  // ── Identificador ──────────────────────────────────────────────────────────
+
+  /**
+   * La regla que cada tipo le impone a los productos se repite acá porque recién se nota al crear
+   * un producto, y ahí el rechazo llega sin que se entienda de dónde sale. Es solo informativa: la
+   * aplica Donaciones.
+   */
+  static String identificador(String json) {
+    JsonNode n = parsear(json);
+    if (n == null) {
+      return json;
+    }
+    String tipo = n.path("tipo").asText("").toUpperCase();
+    String nombreDelTipo =
+        switch (tipo) {
+          case "CODIGODEBARRAS" -> "Código de barras";
+          case "QR" -> "QR";
+          default -> txt(n, "tipo");
+        };
+    String regla =
+        switch (tipo) {
+          case "CODIGODEBARRAS" ->
+              "\n\n<i>Los productos con este identificador necesitan una descripción de 3 o más "
+                  + "palabras.</i>";
+          case "QR" ->
+              "\n\n<i>Los productos con este identificador necesitan un nombre con una cantidad par "
+                  + "de letras.</i>";
+          default -> "";
+        };
+    return "🏷️ <b>Identificador nº "
+        + txt(n, "id")
+        + "</b>\n"
+        + nombreDelTipo
+        + " · "
+        + txt(n, "descripcion")
+        + regla;
   }
 
   // ── Logística ──────────────────────────────────────────────────────────────

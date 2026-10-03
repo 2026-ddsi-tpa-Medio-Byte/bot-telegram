@@ -71,6 +71,30 @@ class FormularioTest {
   }
 
   @Test
+  @DisplayName("Una lista numerada se elige con el número o con el nombre, sin importar tildes ni espacios")
+  void listaNumerada() {
+    List<String> tipos = List.of("CODIGODEBARRAS", "QR");
+    Formulario f =
+        new Formulario(
+            "Prueba",
+            r -> Formulario.elegida(r.get(0), tipos),
+            Campo.numerada(
+                "¿De qué tipo?",
+                List.of("Código de barras", "QR"),
+                t -> tipos.contains(Formulario.elegida(t, tipos))));
+
+    assertTrue(f.primeraPregunta().contains("1 · Código de barras"));
+    assertTrue(f.primeraPregunta().contains("2 · QR"));
+    assertTrue(f.responder("3").contains("del 1 al 2"), "un número fuera de la lista se repregunta");
+    assertEquals("CODIGODEBARRAS", f.responder("código de barras"));
+    assertEquals("QR", Formulario.elegida("2", tipos));
+    assertEquals(
+        "otra cosa",
+        Formulario.elegida(" otra cosa ", tipos),
+        "lo que no coincide se manda tal cual: si no sirve, que lo diga el módulo");
+  }
+
+  @Test
   @DisplayName("Si la operación falla, el formulario igual queda cerrado")
   void operacionQueFalla() {
     Formulario f =

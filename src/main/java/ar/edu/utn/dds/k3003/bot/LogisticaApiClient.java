@@ -78,7 +78,34 @@ public class LogisticaApiClient {
     return post("/depositos", body);
   }
 
-  /** El algoritmo define a cuál de las necesidades candidatas le asigna cada donación. */
+  /** Los nombres de los dos algoritmos en los endpoints /api, que es por donde se configuran. */
+  static final String SUBATENDIDOS = "SUBATENDIDOS";
+
+  static final String PRIOSCORE = "PRIOSCORE";
+
+  /**
+   * Traduce el algoritmo al nombre que espera {@code /api/depositos/{id}/algoritmo}.
+   *
+   * <p>Logística nombra distinto el mismo algoritmo según el endpoint: SUB_ATENDIDOS y
+   * PRIORIDAD_POR_SCORE en /depositos, el de integración con el que se crean los depósitos, y
+   * SUBATENDIDOS y PRIOSCORE en /api, donde los nombres con guion bajo no valen. Quien usa el bot no
+   * tiene por qué saberlo. Es formato, no regla: lo que no se reconoce se manda tal cual, para que
+   * Logística lo rechace con su motivo.
+   */
+  static String algoritmoEnApi(String algoritmo) {
+    String escrito = algoritmo.trim().toUpperCase();
+    return switch (escrito.replaceAll("[^A-Z]", "")) {
+      case "SUBATENDIDOS" -> SUBATENDIDOS;
+      case "PRIOSCORE", "PRIORIDADPORSCORE" -> PRIOSCORE;
+      default -> escrito;
+    };
+  }
+
+  /**
+   * El algoritmo define a cuál de las necesidades candidatas le asigna cada donación.
+   *
+   * @param algoritmo con el nombre de /api: ver {@link #algoritmoEnApi}
+   */
   public String configurarAlgoritmo(String depositoId, String algoritmo) {
     try {
       rest.put(

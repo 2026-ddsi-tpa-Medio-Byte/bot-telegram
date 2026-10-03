@@ -53,5 +53,5 @@ por chat.
 mvn test
 ```
 
-86 tests, 0 fallos. Incluyen que los comandos con guion bajo lleguen enteros al usuario, la
+109 tests, 0 fallos. Incluyen que los comandos con guion bajo lleguen enteros al usuario, la
 integración con los cuatro microservicios y cómo se traducen los errores de cada módulo.

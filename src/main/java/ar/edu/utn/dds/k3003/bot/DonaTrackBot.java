@@ -309,9 +309,12 @@ public class DonaTrackBot {
         }
         case "/categoriadonador" -> {
           exigirAdmin(s);
+          if (args.isBlank()) {
+            iniciar(chatId, formularios.categoriaDonador());
+            return;
+          }
           String[] p = campos(args, 2, "/categoriadonador id;categoria");
-          String json = api.cambiarCategoriaDonador(p[0], p[1]);
-          telegram.sendMessage(chatId, "✅ Categoría cambiada\n\n" + Formato.donador(json));
+          telegram.sendMessage(chatId, formularios.cambiarCategoria(p[0], p[1]));
         }
         case "/quejas" -> {
           exigirAdmin(s);
@@ -350,15 +353,12 @@ public class DonaTrackBot {
         }
         case "/algoritmo" -> {
           exigirAdmin(s);
-          String[] p = campos(args, 2, "/algoritmo depositoId;SUB_ATENDIDOS|PRIORIDAD_POR_SCORE");
-          logistica.configurarAlgoritmo(p[0], p[1].toUpperCase());
-          telegram.sendMessage(
-              chatId,
-              "⚙️ El depósito <b>"
-                  + p[0]
-                  + "</b> ahora asigna con <b>"
-                  + p[1].toUpperCase()
-                  + "</b>.\nEs el criterio con el que elige a cuál necesidad le manda cada donación.");
+          if (args.isBlank()) {
+            iniciar(chatId, formularios.algoritmo());
+            return;
+          }
+          String[] p = campos(args, 2, "/algoritmo depositoId;SUBATENDIDOS|PRIOSCORE");
+          telegram.sendMessage(chatId, formularios.configurarAlgoritmo(p[0], p[1]));
         }
 
         // ── Incentivos ──────────────────────────────────────────────────────
@@ -399,11 +399,12 @@ public class DonaTrackBot {
         // ── Catálogo de Donaciones ──────────────────────────────────────────
         case "/crearidentificador" -> {
           exigirAdmin(s);
+          if (args.isBlank()) {
+            iniciar(chatId, formularios.identificador());
+            return;
+          }
           String[] p = campos(args, 2, "/crearidentificador CODIGODEBARRAS|QR;descripcion");
-          telegram.sendMessage(
-              chatId,
-              "🏷️ Identificador creado:\n"
-                  + donaciones.crearIdentificador(p[0].toUpperCase(), p[1]));
+          telegram.sendMessage(chatId, formularios.crearIdentificador(p[0], p[1]));
         }
         case "/crearproducto" -> {
           exigirAdmin(s);
@@ -584,7 +585,7 @@ public class DonaTrackBot {
         /donador <número> — uno
         /estadisticas <número> · /quejas <número>
         /estadodonador — verificado, sospechoso o baneado
-        /categoriadonador id;categoria
+        /categoriadonador — cambiarle la categoría
         /procesardonador <número>
 
         <b>Logística</b>
@@ -592,7 +593,7 @@ public class DonaTrackBot {
         /stock <productoID> — stock disponible
         /reportarentrega — cerrar una donación entregada
         /creardeposito — alta guiada
-        /algoritmo depositoId;SUB_ATENDIDOS|PRIORIDAD_POR_SCORE
+        /algoritmo — cómo elige un depósito a qué necesidad mandar cada donación
 
         <b>Incentivos</b>
         /insignias · /misiones — los catálogos
@@ -601,7 +602,7 @@ public class DonaTrackBot {
         <b>Catálogo de donaciones</b>
         /donarcomo — donar a nombre de otro
         /crearproducto — alta guiada
-        /crearidentificador CODIGODEBARRAS|QR;descripcion
+        /crearidentificador — código de barras o QR, alta guiada
         /quejar — reclamar por una donación ya entregada
 
         <b>Demostración</b>
@@ -630,7 +631,7 @@ public class DonaTrackBot {
           .append("\n  ")
           .append(p.path("descripcion").asText());
     }
-    sb.append("\n\nPara donar: /donar productoID;cantidad;descripcion");
+    sb.append("\n\nPara donar: /donar, y te pregunto qué, cuánto y para qué.");
     return sb.toString();
   }
 
