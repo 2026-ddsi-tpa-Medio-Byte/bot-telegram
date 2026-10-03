@@ -1,5 +1,6 @@
 package ar.edu.utn.dds.k3003.bot;
 
+import java.time.Clock;
 import java.time.Duration;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
@@ -26,5 +27,11 @@ public class AppConfig {
               return ejecucion.execute(request, body);
             })
         .build();
+  }
+
+  /** Un bean y no Clock.systemUTC() suelto, para que los tests del login puedan adelantar la hora. */
+  @Bean
+  public Clock reloj() {
+    return Clock.systemUTC();
   }
 }

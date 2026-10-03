@@ -45,15 +45,8 @@ class AlgoritmoTest {
     RestTemplate rest = new RestTemplate();
     logistica = MockRestServiceServer.bindTo(rest).build();
     LogisticaApiClient cliente = new LogisticaApiClient(rest, LOGISTICA);
-    Impacto impacto = new Impacto(donaciones, donadores, cliente, incentivos);
-    Demo demo = new Demo(donaciones, donadores, cliente, incentivos, "DEP-UTN-01");
-    Formularios formularios =
-        new Formularios(donadores, donaciones, cliente, incentivos, impacto, "DEP-UTN-01");
-    bot =
-        new DonaTrackBot(
-            telegram, donadores, donaciones, cliente, incentivos, impacto, demo, formularios,
-            "DEP-UTN-01");
-    bot.handle(1L, "/soy_admin");
+    bot = BotDePrueba.armar(telegram, donadores, donaciones, cliente, incentivos);
+    BotDePrueba.entrarComoAdmin(bot, telegram, 1L);
   }
 
   @ParameterizedTest(name = "elegir «{0}» manda {1}")

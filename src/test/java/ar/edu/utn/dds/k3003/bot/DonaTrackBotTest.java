@@ -38,14 +38,12 @@ class DonaTrackBotTest {
   void setUp() {
     // Impacto y Demo van reales, con los clientes mockeados: así se ejercita también el camino en
     // el que un módulo no contesta, que es el que más se va a dar en la demostración.
-    Impacto impacto = new Impacto(donaciones, api, logistica, incentivos);
-    Demo demo = new Demo(donaciones, api, logistica, incentivos, "DEP-TEST");
-    Formularios formularios =
-        new Formularios(api, donaciones, logistica, incentivos, impacto, "DEP-TEST");
-    bot =
-        new DonaTrackBot(
-            telegram, api, donaciones, logistica, incentivos, impacto, demo, formularios,
-            "DEP-TEST");
+    bot = BotDePrueba.armar(telegram, api, donaciones, logistica, incentivos);
+  }
+
+  /** Por el mismo camino que una persona: /soy_admin y la contraseña. */
+  private void entrarComoAdmin(long chatId) {
+    BotDePrueba.entrarComoAdmin(bot, telegram, chatId);
   }
 
   // ── Entrada ────────────────────────────────────────────────────────────────
@@ -183,7 +181,7 @@ class DonaTrackBotTest {
   @Test
   @DisplayName("La necesidad guiada manda cada dato en su lugar, aunque se pregunten en otro orden")
   void necesidadGuiada() {
-    bot.handle(1L, "/soy_admin");
+    entrarComoAdmin(1L);
 
     bot.handle(1L, "/altanecesidad");
     bot.handle(1L, "1"); // entidad
@@ -281,7 +279,7 @@ class DonaTrackBotTest {
   @Test
   @DisplayName("El admin sí puede, y ve la entidad formateada")
   void adminCreaEntidad() {
-    bot.handle(1L, "/soy_admin");
+    entrarComoAdmin(1L);
     when(api.crearEntidadRaw("Comedor", "Calle 1", "123", "c@mail.com"))
         .thenReturn(
             "{\"id\":\"4\",\"razonSocial\":\"Comedor\",\"domicilio\":\"Calle 1\","
@@ -295,7 +293,7 @@ class DonaTrackBotTest {
   @Test
   @DisplayName("El admin puede cambiarle el estado a un donador")
   void adminCambiaEstado() {
-    bot.handle(1L, "/soy_admin");
+    entrarComoAdmin(1L);
     when(api.cambiarEstadoDonador("2", "BANEADO")).thenReturn(ANA);
 
     bot.handle(1L, "/estadodonador 2;baneado");
@@ -306,7 +304,7 @@ class DonaTrackBotTest {
   @Test
   @DisplayName("/altanecesidad normaliza el tipo a mayúsculas")
   void altaNecesidad() {
-    bot.handle(1L, "/soy_admin");
+    entrarComoAdmin(1L);
     when(api.altaNecesidadRaw("5", 3, "sillas", 30, "prod1", "EXTRAORDINARIA"))
         .thenReturn("{\"id\":\"1\",\"cantidadObjetivo\":30,\"cantidadActual\":0}");
 
@@ -353,12 +351,13 @@ class DonaTrackBotTest {
   @Test
   @DisplayName("Un texto suelto con el rol ya elegido devuelve el menú de ese rol, no la bienvenida")
   void textoSueltoConRolElegido() {
-    bot.handle(1L, "/soy_admin");
+    entrarComoAdmin(1L);
 
     bot.handle(1L, "hola");
 
+    // El pedido de contraseña, la bienvenida con el menú y la respuesta al «hola».
     org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
-    verify(telegram, org.mockito.Mockito.times(2)).sendMessage(eq(1L), captor.capture());
+    verify(telegram, org.mockito.Mockito.times(3)).sendMessage(eq(1L), captor.capture());
 
     String respuesta = captor.getValue();
     org.junit.jupiter.api.Assertions.assertTrue(
@@ -370,7 +369,7 @@ class DonaTrackBotTest {
   @Test
   @DisplayName("Un comando desconocido con el rol ya elegido sigue mandando a /help")
   void desconocidoConRolElegido() {
-    bot.handle(1L, "/soy_admin");
+    entrarComoAdmin(1L);
 
     bot.handle(1L, "/donarr");
 
@@ -404,7 +403,7 @@ class DonaTrackBotTest {
 
     bot.handle(1L, "/start");
     bot.handle(1L, "/soy_donador");
-    bot.handle(2L, "/soy_admin");
+    entrarComoAdmin(2L);
 
     verify(telegram, org.mockito.Mockito.atLeast(3)).sendMessage(anyLong(), captor.capture());
 
@@ -433,25 +432,33 @@ class DonaTrackBotTest {
   // ── Logística ──────────────────────────────────────────────────────────────
 
   @Test
-  @DisplayName("/depositos consulta los depósitos de Logística")
+  @DisplayName("/depositos consulta los depósitos de Logística por /api, que trae el stock real")
   void listarDepositos() {
-    when(logistica.listarDepositos()).thenReturn("[{\"id\":\"DEP-1\",\"direccion\":\"Calle 1\",\"capacidadMaxima\":100}]");
+    // /depositos (el de integración) trae el stockActual vacío aunque haya unidades guardadas.
+    when(logistica.listarDepositosConStock())
+        .thenReturn(
+            "[{\"depositoid\":\"DEP-1\",\"direccion\":\"Calle 1\",\"capacidadMaxima\":100,"
+                + "\"stockActual\":20}]");
 
     bot.handle(1L, "/depositos");
 
-    verify(logistica).listarDepositos();
+    verify(logistica).listarDepositosConStock();
+    verify(logistica, never()).listarDepositos();
     verify(telegram).sendMessage(eq(1L), contains("DEP-1"));
   }
 
   @Test
-  @DisplayName("/stock consulta el stock de un producto puntual")
+  @DisplayName("/stock consulta el stock de un producto puntual, depósito por depósito")
   void consultarStock() {
-    when(logistica.consultarStock("5")).thenReturn("{\"disponible\":20}");
+    when(logistica.stockPorDeposito("5"))
+        .thenReturn(
+            "{\"productoid\":\"5\",\"depositos\":[{\"depositoid\":\"DEP-1\","
+                + "\"disponibleEnDeposito\":20}],\"totalDisponible\":20}");
 
     bot.handle(1L, "/stock 5");
 
-    verify(logistica).consultarStock("5");
-    verify(telegram).sendMessage(eq(1L), contains("20"));
+    verify(logistica).stockPorDeposito("5");
+    verify(telegram).sendMessage(eq(1L), contains("DEP-1 · 20 unidades"));
   }
 
   @Test
@@ -467,7 +474,7 @@ class DonaTrackBotTest {
   @Test
   @DisplayName("El admin sí puede reportar entregas en Logística")
   void reportarEntregaAdmin() {
-    bot.handle(1L, "/soy_admin");
+    entrarComoAdmin(1L);
     when(logistica.reportarEntrega("paq-DON-1", "DON-1", "PROD-1", 10)).thenReturn("OK");
 
     bot.handle(1L, "/reportarentrega DON-1;PROD-1;10");
@@ -514,7 +521,7 @@ class DonaTrackBotTest {
   @Test
   @DisplayName("El admin puede procesar a un donador en Incentivos")
   void procesarDonadorAdmin() {
-    bot.handle(1L, "/soy_admin");
+    entrarComoAdmin(1L);
     when(incentivos.procesarDonador("1")).thenReturn("OK");
 
     bot.handle(1L, "/procesardonador 1");
@@ -537,14 +544,15 @@ class DonaTrackBotTest {
   void quejaSobreDonacionEntregada() {
     org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
 
-    bot.handle(1L, "/soy_admin");
+    entrarComoAdmin(1L);
     bot.handle(1L, "/demo");
     bot.handle(1L, "/quejar");
 
-    verify(telegram, org.mockito.Mockito.times(3)).sendMessage(eq(1L), captor.capture());
-    String menu = captor.getAllValues().get(0);
-    String guion = captor.getAllValues().get(1);
-    String pregunta = captor.getAllValues().get(2);
+    // El primero es el pedido de contraseña; el menú llega con la bienvenida.
+    verify(telegram, org.mockito.Mockito.times(4)).sendMessage(eq(1L), captor.capture());
+    String menu = captor.getAllValues().get(1);
+    String guion = captor.getAllValues().get(2);
+    String pregunta = captor.getAllValues().get(3);
 
     org.junit.jupiter.api.Assertions.assertTrue(
         menu.contains("/quejar — reclamar por una donación ya entregada"), menu);
@@ -591,7 +599,7 @@ class DonaTrackBotTest {
   @Test
   @DisplayName("Reiniciar borra los cuatro módulos")
   void reiniciarBorraTodo() {
-    bot.handle(1L, "/soy_admin");
+    entrarComoAdmin(1L);
 
     bot.handle(1L, "/reiniciar");
 
@@ -604,7 +612,7 @@ class DonaTrackBotTest {
   @Test
   @DisplayName("Si un módulo no despertó, preparar no carga datos a medias")
   void prepararNoCargaSiFaltaUnModulo() {
-    bot.handle(1L, "/soy_admin");
+    entrarComoAdmin(1L);
     when(donaciones.listarProductos()).thenThrow(new RuntimeException("no responde"));
 
     bot.handle(1L, "/preparar");
@@ -625,7 +633,7 @@ class DonaTrackBotTest {
   @Test
   @DisplayName("El admin puede donar a nombre de un donador, sin cambiar de rol")
   void donarComoAdmin() {
-    bot.handle(1L, "/soy_admin");
+    entrarComoAdmin(1L);
     when(donaciones.donar("5", "DEP-TEST", "Diez kilos", "3", 10))
         .thenReturn("{\"id\":\"9\",\"cantidad\":10,\"estado\":\"INGRESADA\"}");
 
@@ -648,7 +656,7 @@ class DonaTrackBotTest {
   @Test
   @DisplayName("El admin configura el algoritmo de matchmaking de un depósito")
   void configurarAlgoritmo() {
-    bot.handle(1L, "/soy_admin");
+    entrarComoAdmin(1L);
 
     bot.handle(1L, "/algoritmo DEP-UTN-01;prioridad_por_score");
 
@@ -667,7 +675,7 @@ class DonaTrackBotTest {
             {"id":"1","nombre":"Ana","apellido":"Gomez","estado":"VERIFICADO",
              "categoria":"TRANSFORMADOR"}""");
     org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
-    bot.handle(1L, "/soy_admin");
+    entrarComoAdmin(1L);
 
     bot.handle(1L, "/categoriadonador");
     bot.handle(1L, "1");
@@ -692,7 +700,7 @@ class DonaTrackBotTest {
   @Test
   @DisplayName("Donadores acepta la categoría como texto libre: una que no está en la lista se manda igual")
   void categoriaFueraDeLaLista() {
-    bot.handle(1L, "/soy_admin");
+    entrarComoAdmin(1L);
 
     bot.handle(1L, "/categoriadonador");
     bot.handle(1L, "1");
@@ -708,7 +716,7 @@ class DonaTrackBotTest {
         .thenReturn(
             "{\"id\":\"11\",\"tipo\":\"CODIGODEBARRAS\",\"descripcion\":\"Código EAN del arroz\"}");
     org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
-    bot.handle(1L, "/soy_admin");
+    entrarComoAdmin(1L);
 
     bot.handle(1L, "/crearidentificador");
     bot.handle(1L, "3");
@@ -733,7 +741,7 @@ class DonaTrackBotTest {
   @Test
   @DisplayName("Los atajos en una línea de las altas nuevas siguen andando")
   void atajosEnUnaLinea() {
-    bot.handle(1L, "/soy_admin");
+    entrarComoAdmin(1L);
 
     bot.handle(1L, "/categoriadonador 2;salvador");
     bot.handle(1L, "/crearidentificador qr;Etiqueta del frasco");
@@ -742,43 +750,201 @@ class DonaTrackBotTest {
     verify(donaciones).crearIdentificador("QR", "Etiqueta del frasco");
   }
 
+  /**
+   * Recorre todos los comandos de los dos menús: cada uno sin datos, contestando sus preguntas y
+   * escrito mal en una línea. Los módulos contestan listas vacías a todo, porque lo que se revisa es
+   * el texto del bot y no los datos.
+   */
   @Test
-  @DisplayName("Ningún menú, el guion ni el catálogo le piden al usuario datos separados por punto y coma")
-  void sinPuntoYComaEnLoQueSeMuestra() {
-    when(api.buscarDonador("1")).thenReturn(ANA);
-    when(donaciones.listarProductos())
-        .thenReturn("[{\"id\":\"3\",\"nombre\":\"Arroz\",\"descripcion\":\"Arroz blanco\"}]");
+  @DisplayName("Ningún texto del bot le pide datos separados por punto y coma: ni menús, ni ayudas, ni formularios")
+  void sinPuntoYComaEnNingunTexto() {
+    org.mockito.stubbing.Answer<Object> vacio =
+        invocacion ->
+            invocacion.getMethod().getReturnType() == String.class
+                ? "[]"
+                : org.mockito.Mockito.RETURNS_DEFAULTS.answer(invocacion);
+    DonaTrackBot todoVacio =
+        BotDePrueba.armar(
+            telegram,
+            org.mockito.Mockito.mock(DonadoresApiClient.class, vacio),
+            org.mockito.Mockito.mock(DonacionesApiClient.class, vacio),
+            org.mockito.Mockito.mock(LogisticaApiClient.class, vacio),
+            org.mockito.Mockito.mock(IncentivosApiClient.class, vacio));
+
+    todoVacio.handle(1L, "/start");
+    todoVacio.handle(1L, "/soy_donador");
+    recorrer(todoVacio, 1L, java.util.List.of("/registrarse", "/entrar"));
+    todoVacio.handle(1L, "/entrar 1");
+    BotDePrueba.entrarComoAdmin(todoVacio, telegram, 2L);
+
     org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
-
-    bot.handle(1L, "/start");
-    bot.handle(1L, "/soy_donador");
-    bot.handle(1L, "/entrar 1");
-    bot.handle(1L, "/productos");
-    bot.handle(2L, "/soy_admin");
-    bot.handle(2L, "/demo");
-
-    verify(telegram, org.mockito.Mockito.atLeast(6)).sendMessage(anyLong(), captor.capture());
-    // Un comando seguido de datos pegados con punto y coma, como «/donar 3;10;arroz». Un punto y
-    // coma en la prosa («se duermen; hacelo...») no le pide nada al usuario.
-    java.util.regex.Pattern atajo = java.util.regex.Pattern.compile("/[a-z_]+ \\S*;");
-    for (String mensaje : captor.getAllValues()) {
-      org.junit.jupiter.api.Assertions.assertFalse(
-          atajo.matcher(mensaje).find(), "las altas son guiadas, el atajo no se enseña: " + mensaje);
-    }
+    verify(telegram, org.mockito.Mockito.atLeastOnce()).sendMessage(anyLong(), captor.capture());
+    String menuDonador =
+        captor.getAllValues().stream().filter(m -> m.contains("/misdonaciones")).findFirst().orElseThrow();
     String menuAdmin =
         captor.getAllValues().stream()
             .filter(m -> m.contains("Modo administrador"))
             .findFirst()
-            .orElse("");
-    org.junit.jupiter.api.Assertions.assertTrue(menuAdmin.contains("/categoriadonador —"), menuAdmin);
-    org.junit.jupiter.api.Assertions.assertTrue(menuAdmin.contains("/algoritmo —"), menuAdmin);
-    org.junit.jupiter.api.Assertions.assertTrue(menuAdmin.contains("/crearidentificador —"), menuAdmin);
+            .orElseThrow();
+    recorrer(todoVacio, 1L, comandosDe(menuDonador));
+    recorrer(todoVacio, 2L, comandosDe(menuAdmin));
+
+    captor = org.mockito.ArgumentCaptor.forClass(String.class);
+    verify(telegram, org.mockito.Mockito.atLeastOnce()).sendMessage(anyLong(), captor.capture());
+    // Un comando seguido de datos pegados con punto y coma, como «/donar 3;10;arroz». Un punto y
+    // coma en la prosa («te pregunto cuál; con número...») no le pide nada al usuario.
+    java.util.regex.Pattern atajo = java.util.regex.Pattern.compile("/[a-z_]+ \\S*;");
+    org.junit.jupiter.api.Assertions.assertTrue(captor.getAllValues().size() > 100, "¿se recorrió todo?");
+    for (String mensaje : captor.getAllValues()) {
+      // Las entidades HTML como &lt; llevan punto y coma, pero en el celular se ven como «<».
+      String visible =
+          mensaje == null
+              ? ""
+              : mensaje.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&");
+      org.junit.jupiter.api.Assertions.assertFalse(
+          atajo.matcher(visible).find(), "las altas son guiadas, el atajo no se enseña: " + mensaje);
+    }
+  }
+
+  /** Cada comando sin datos, con sus preguntas contestadas, y escrito mal en una línea. */
+  private void recorrer(DonaTrackBot unBot, long chatId, java.util.List<String> comandos) {
+    for (String comando : comandos) {
+      unBot.handle(chatId, comando);
+      for (int i = 0; i < 6; i++) {
+        unBot.handle(chatId, "1");
+      }
+      unBot.handle(chatId, "/cancelar");
+      unBot.handle(chatId, comando + " x");
+    }
+  }
+
+  /** Los comandos que ofrece un menú, salvo /salir, que cortaría el recorrido. */
+  private static java.util.List<String> comandosDe(String menu) {
+    java.util.List<String> comandos = new java.util.ArrayList<>();
+    java.util.regex.Matcher m = java.util.regex.Pattern.compile("/[a-z_]+").matcher(menu);
+    while (m.find()) {
+      if (!comandos.contains(m.group()) && !"/salir".equals(m.group())) {
+        comandos.add(m.group());
+      }
+    }
+    return comandos;
+  }
+
+  @Test
+  @DisplayName("El menú de admin tiene las secciones aprobadas, todas las consultas y entra en un mensaje de Telegram")
+  void menuDeAdmin() {
+    entrarComoAdmin(1L);
+    bot.handle(1L, "/help");
+
+    org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
+    verify(telegram, org.mockito.Mockito.atLeastOnce()).sendMessage(eq(1L), captor.capture());
+    String menu = captor.getValue();
+    for (String parte :
+        java.util.List.of(
+            "🔎 <b>CONSULTAR</b>",
+            "Sin número te pregunto cuál; con número vas directo (/donador 3).",
+            "✏️ <b>OPERAR</b> (te pregunto los datos de a uno)",
+            "<b>Donaciones</b>",
+            "<b>Donadores y entidades</b>",
+            "<b>Logística</b>",
+            "<b>Incentivos</b>",
+            "🎬 /demo · /estado · /reiniciar · /preparar",
+            "🚪 /salir")) {
+      org.junit.jupiter.api.Assertions.assertTrue(menu.contains(parte), parte + " en:\n" + menu);
+    }
+    for (String consulta :
+        java.util.List.of(
+            "/donaciones", "/donacion ", "/productos", "/identificadores", "/donadores",
+            "/donador ", "/estadisticas", "/entidades", "/entidad ", "/necesidades",
+            "/necesidad ", "/depositos", "/stock", "/asignaciones", "/paquete", "/insignias",
+            "/misiones", "/progreso")) {
+      org.junit.jupiter.api.Assertions.assertTrue(menu.contains(consulta), consulta);
+    }
+    org.junit.jupiter.api.Assertions.assertTrue(
+        menu.length() < 4096, "Telegram corta en 4096 caracteres y el menú tiene " + menu.length());
+  }
+
+  // ── El donador ─────────────────────────────────────────────────────────────
+
+  @Test
+  @DisplayName("La puerta del donador no ofrece la lista de donadores: es solo para el admin")
+  void puertaSinListaDeDonadores() {
+    bot.handle(1L, "/soy_donador");
+
+    verify(telegram).sendMessage(eq(1L), org.mockito.ArgumentMatchers.argThat(
+        m -> m.contains("/entrar") && !m.contains("/donadores")));
+  }
+
+  @Test
+  @DisplayName("El menú del donador ofrece ver las necesidades y no ofrece quejarse")
+  void menuDelDonador() {
+    when(api.buscarDonador("1")).thenReturn(ANA);
+
+    bot.handle(1L, "/entrar 1");
+
+    verify(telegram).sendMessage(eq(1L), org.mockito.ArgumentMatchers.argThat(
+        m -> m.contains("/necesidades — qué están pidiendo las entidades") && !m.contains("/quejar")));
+  }
+
+  // ── Las altas y cambios que faltaban guiar ─────────────────────────────────
+
+  @Test
+  @DisplayName("/editarentidad guiado: un guion deja el dato como está y no se manda")
+  void editarEntidadGuiado() {
+    entrarComoAdmin(1L);
+    when(api.editarEntidadRaw("4", null, "Calle 2", null, null))
+        .thenReturn("{\"id\":\"4\",\"razonSocial\":\"Comedor\",\"domicilio\":\"Calle 2\"}");
+
+    bot.handle(1L, "/editarentidad");
+    bot.handle(1L, "4");
+    bot.handle(1L, "-");
+    bot.handle(1L, "Calle 2");
+    bot.handle(1L, "-");
+    bot.handle(1L, "-");
+
+    // Donadores deja como está lo que llega en null: no hace falta leer la entidad antes.
+    verify(api).editarEntidadRaw("4", null, "Calle 2", null, null);
+    verify(telegram).sendMessage(eq(1L), contains("Entidad actualizada"));
+  }
+
+  @Test
+  @DisplayName("/modificarnecesidad guiado cambia solo lo que se contesta, y el atajo sigue andando")
+  void modificarNecesidadGuiado() {
+    entrarComoAdmin(1L);
+
+    bot.handle(1L, "/modificarnecesidad");
+    bot.handle(1L, "7");
+    bot.handle(1L, "30");
+    bot.handle(1L, "-");
+    bot.handle(1L, "-");
+    bot.handle(1L, "-");
+    bot.handle(1L, "-");
+    bot.handle(1L, "/modificarnecesidad 7;5;Arroz;30;3;recurrente");
+
+    verify(api).modificarNecesidadRaw("7", null, null, 30, null, null);
+    verify(api).modificarNecesidadRaw("7", 5, "Arroz", 30, "3", "RECURRENTE");
+  }
+
+  @Test
+  @DisplayName("/crearproducto muestra el producto creado formateado, no el JSON")
+  void productoFormateado() {
+    entrarComoAdmin(1L);
+    when(donaciones.crearProducto("Arroz", "Arroz blanco largo fino", "alimentos", "1"))
+        .thenReturn(
+            """
+            {"id":"5","nombre":"Arroz","descripcion":"Arroz blanco largo fino",
+             "categoriaID":"alimentos","identificadorID":"1"}""");
+
+    bot.handle(1L, "/crearproducto Arroz;Arroz blanco largo fino;alimentos;1");
+
+    verify(telegram).sendMessage(eq(1L), org.mockito.ArgumentMatchers.argThat(
+        m -> m.contains("Producto nº 5") && m.contains("Arroz blanco largo fino") && !m.contains("{")));
   }
 
   @Test
   @DisplayName("El admin da de alta un depósito en Logística")
   void crearDeposito() {
-    bot.handle(1L, "/soy_admin");
+    entrarComoAdmin(1L);
 
     bot.handle(1L, "/creardeposito DEP-2;Sucursal Norte;Calle 1;500");
 
@@ -788,7 +954,7 @@ class DonaTrackBotTest {
   @Test
   @DisplayName("El admin da de alta productos e identificadores en Donaciones")
   void crearProducto() {
-    bot.handle(1L, "/soy_admin");
+    entrarComoAdmin(1L);
     when(donaciones.crearProducto("Arroz", "Arroz blanco largo fino", "alimentos", "1"))
         .thenReturn("{\"id\":\"5\"}");
 
@@ -800,7 +966,7 @@ class DonaTrackBotTest {
   @Test
   @DisplayName("El admin da de alta insignias y misiones en Incentivos")
   void crearInsigniaYMision() {
-    bot.handle(1L, "/soy_admin");
+    entrarComoAdmin(1L);
 
     bot.handle(1L, "/crearinsignia ins-1;Solidario;Primera donacion");
     bot.handle(1L, "/crearmision mis-1;Mision Solidaria;ins-1;OCASIONAL;COLABORADOR");

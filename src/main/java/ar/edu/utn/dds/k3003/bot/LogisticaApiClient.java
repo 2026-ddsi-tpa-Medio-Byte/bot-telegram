@@ -30,12 +30,43 @@ public class LogisticaApiClient {
     log.info("Cliente de Logística apuntando a {}", baseUrl);
   }
 
+  /**
+   * El endpoint de integración: sirve para ver qué depósitos existen, pero trae el stockActual
+   * vacío aunque haya unidades guardadas. Para el stock, {@link #listarDepositosConStock}.
+   */
   public String listarDepositos() {
     return get("/depositos");
   }
 
+  /**
+   * Los depósitos con el stock real de cada uno, en {@code stockActual}. Es el que usa el MCP.
+   *
+   * <p>Sin depósitos, Logística contesta 204 sin cuerpo: se devuelve una lista vacía para que
+   * quien lo muestre no tenga que distinguir ese caso.
+   */
+  public String listarDepositosConStock() {
+    String json = get("/api/depositos");
+    return json == null || json.isBlank() ? "[]" : json;
+  }
+
   public String consultarStock(String productoId) {
     return get("/stock/" + productoId.trim());
+  }
+
+  /** Cuántas unidades de un producto hay en cada depósito, con el total. Como lo pide el MCP. */
+  public String stockPorDeposito(String productoId) {
+    return get("/stock/" + productoId.trim() + "/detalle");
+  }
+
+  /**
+   * Los paquetes armados que todavía no se entregaron.
+   *
+   * <p>Es la única forma de encontrar los de una solicitud ({@code paq-solicitud-<uuid>}), que no
+   * se deducen de ninguna donación.
+   */
+  public String asignacionesPendientes() {
+    String json = get("/api/asignaciones?estado=ASIGNADA");
+    return json == null || json.isBlank() ? "[]" : json;
   }
 
   /** La asignación de un paquete dice a qué necesidad fue a parar y por qué criterio. */

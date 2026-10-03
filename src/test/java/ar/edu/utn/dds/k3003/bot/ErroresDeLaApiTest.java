@@ -178,6 +178,7 @@ class ErroresDeLaApiTest {
 
     assertTrue(mensaje.contains("Ya existe un donador con el documento 40100001"), mensaje);
     assertTrue(mensaje.contains("/entrar"), "lo más probable es que ya estuviera registrado");
+    assertFalse(mensaje.contains("/donadores"), "la lista de donadores es solo para el admin");
   }
 
   @Test

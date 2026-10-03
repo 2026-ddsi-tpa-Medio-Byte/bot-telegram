@@ -84,6 +84,34 @@ final class Formato {
     return sb.toString();
   }
 
+  /** Cuántas quejas se listan: las de un donador por banear llegan a diez y no hace falta más. */
+  private static final int QUEJAS_A_MOSTRAR = 10;
+
+  /** @param titulo ya escapado: lo arma el bot, no viene de la API */
+  static String quejas(String json, String titulo) {
+    JsonNode arr = parsear(json);
+    if (arr == null || !arr.isArray()) {
+      return "No pude leer las quejas.";
+    }
+    if (arr.isEmpty()) {
+      return "Ese donador no tiene ninguna queja. 👍";
+    }
+    StringBuilder sb = new StringBuilder("⚠️ <b>" + titulo + " (" + arr.size() + ")</b>\n");
+    int mostradas = 0;
+    for (JsonNode q : arr) {
+      if (mostradas++ >= QUEJAS_A_MOSTRAR) {
+        sb.append("\n… y ").append(arr.size() - QUEJAS_A_MOSTRAR).append(" más");
+        break;
+      }
+      sb.append("\n• donación nº ")
+          .append(txt(q, "donacionID"))
+          .append(q.hasNonNull("fecha") ? " · " + txt(q, "fecha") : "")
+          .append("\n  ")
+          .append(txt(q, "descripcion"));
+    }
+    return sb.toString();
+  }
+
   static String estadisticas(String json) {
     JsonNode n = parsear(json);
     if (n == null) {
@@ -178,6 +206,7 @@ final class Formato {
         + " de "
         + objetivo
         + (actual >= objetivo && objetivo > 0 ? "  ✅ completa" : "")
+        + (actual < objetivo ? "\nFaltan <b>" + (objetivo - actual) + "</b> unidades" : "")
         + "\n\n"
         + urgencia(n.path("nivelDeUrgencia").asInt(0))
         + "\n📦 Producto nº "
@@ -188,8 +217,38 @@ final class Formato {
         + txt(n, "entidadID");
   }
 
+  /**
+   * Una necesidad en un renglón, para los listados por producto.
+   *
+   * <p>Lo que se mira primero en un listado es cuánto falta, así que va escrito y no solo en la
+   * barra.
+   */
+  static String necesidadEnLista(JsonNode n) {
+    int objetivo = n.path("cantidadObjetivo").asInt(0);
+    int actual = n.path("cantidadActual").asInt(0);
+    return "• nº "
+        + txt(n, "id")
+        + " · entidad nº "
+        + txt(n, "entidadID")
+        + " · "
+        + barra(actual, objetivo)
+        + " "
+        + actual
+        + "/"
+        + objetivo
+        + (actual < objetivo ? " · faltan " + (objetivo - actual) : "")
+        + "\n  "
+        + txt(n, "descripcion")
+        + " · urgencia "
+        + n.path("nivelDeUrgencia").asInt(0);
+  }
+
   // ── Donación ───────────────────────────────────────────────────────────────
 
+  /**
+   * Una donación tal como la devuelve Donaciones: el estado es el de ahora. El módulo no guarda por
+   * qué estados pasó, así que no se muestra un historial que no existe.
+   */
   static String donacion(String json) {
     JsonNode n = parsear(json);
     if (n == null) {
@@ -205,8 +264,96 @@ final class Formato {
         + txt(n, "productoID")
         + "\n"
         + estadoDonacion(n.path("estado").asText(""))
+        + "\n🙋 Donador nº "
+        + txt(n, "donadorID")
         + "\n🏬 Depósito "
         + txt(n, "depositoID");
+  }
+
+  /** Cuántas donaciones se listan como mucho: las precondiciones de la demo cargan veinte. */
+  private static final int DONACIONES_A_MOSTRAR = 30;
+
+  /**
+   * Un listado de donaciones para el admin.
+   *
+   * @param conDonador en el listado de todas importa de quién es cada una; en el de un donador no
+   */
+  static String donaciones(String json, String titulo, String siNoHay, boolean conDonador) {
+    JsonNode arr = parsear(json);
+    if (arr == null || !arr.isArray()) {
+      return json;
+    }
+    if (arr.isEmpty()) {
+      return siNoHay;
+    }
+    StringBuilder sb = new StringBuilder("📦 <b>" + titulo + "</b> (" + arr.size() + ")\n");
+    int mostradas = 0;
+    for (JsonNode n : arr) {
+      if (mostradas++ >= DONACIONES_A_MOSTRAR) {
+        sb.append("\n… y ").append(arr.size() - DONACIONES_A_MOSTRAR).append(" más");
+        break;
+      }
+      sb.append("\n• nº ")
+          .append(txt(n, "id"))
+          .append(conDonador ? " · donador nº " + txt(n, "donadorID") : "")
+          .append(" · ")
+          .append(n.path("cantidad").asInt(0))
+          .append(" u. del producto nº ")
+          .append(txt(n, "productoID"))
+          .append("\n  ")
+          .append(estadoDonacion(n.path("estado").asText("")));
+    }
+    return sb.toString();
+  }
+
+  // ── Catálogo de Donaciones ─────────────────────────────────────────────────
+
+  static String producto(String json) {
+    JsonNode n = parsear(json);
+    if (n == null) {
+      return json;
+    }
+    return "📦 <b>Producto nº "
+        + txt(n, "id")
+        + "</b> · "
+        + txt(n, "nombre")
+        + "\n"
+        + txt(n, "descripcion")
+        + "\n🗂️ Categoría "
+        + txt(n, "categoriaID")
+        + " · identificador nº "
+        + txt(n, "identificadorID");
+  }
+
+  static String listaIdentificadores(String json) {
+    JsonNode arr = parsear(json);
+    if (arr == null || !arr.isArray()) {
+      return json;
+    }
+    if (arr.isEmpty()) {
+      return "No hay identificadores cargados todavía. /crearidentificador da de alta uno.";
+    }
+    StringBuilder sb = new StringBuilder("🏷️ <b>Identificadores</b> (" + arr.size() + ")\n");
+    for (JsonNode n : arr) {
+      sb.append("\n• nº ")
+          .append(txt(n, "id"))
+          .append(" · ")
+          .append(nombreDelTipo(n))
+          .append(" · ")
+          .append(txt(n, "descripcion"));
+    }
+    return sb.append(
+            "\n\n<i>Con código de barras, la descripción del producto necesita 3 o más palabras; "
+                + "con QR, el nombre una cantidad par de letras.</i>")
+        .toString();
+  }
+
+  private static String nombreDelTipo(JsonNode identificador) {
+    return switch (identificador.path("tipo").asText("").toUpperCase()) {
+      case "CODIGODEBARRAS" -> "Código de barras";
+      case "QR" -> "QR";
+      default -> txt(identificador, "tipo");
+    };
   }
 
   static String listaDonaciones(String json) {
@@ -242,12 +389,6 @@ final class Formato {
       return json;
     }
     String tipo = n.path("tipo").asText("").toUpperCase();
-    String nombreDelTipo =
-        switch (tipo) {
-          case "CODIGODEBARRAS" -> "Código de barras";
-          case "QR" -> "QR";
-          default -> txt(n, "tipo");
-        };
     String regla =
         switch (tipo) {
           case "CODIGODEBARRAS" ->
@@ -261,7 +402,7 @@ final class Formato {
     return "🏷️ <b>Identificador nº "
         + txt(n, "id")
         + "</b>\n"
-        + nombreDelTipo
+        + nombreDelTipo(n)
         + " · "
         + txt(n, "descripcion")
         + regla;
@@ -269,6 +410,14 @@ final class Formato {
 
   // ── Logística ──────────────────────────────────────────────────────────────
 
+  /**
+   * Los depósitos con su capacidad y, si viene, su stock.
+   *
+   * <p>Entiende las dos formas en que los devuelve Logística: {@code /api/depositos} trae el id en
+   * {@code depositoid} y el stock real como número; {@code /depositos} trae {@code id} y el stock
+   * como una lista que llega vacía aunque haya unidades. De esa no se muestra el stock: sería un
+   * cero que nadie contó.
+   */
   static String listaDepositos(String json) {
     JsonNode arr = parsear(json);
     if (arr == null || !arr.isArray()) {
@@ -279,16 +428,148 @@ final class Formato {
     }
     StringBuilder sb = new StringBuilder("🏬 <b>Depósitos</b> (" + arr.size() + ")\n");
     for (JsonNode n : arr) {
+      int capacidad = n.path("capacidadMaxima").asInt(0);
       sb.append("\n• <b>")
-          .append(txt(n, "id"))
+          .append(esc(primero(n, "depositoid", "id")))
           .append("</b>")
           .append(n.has("nombre") && !n.path("nombre").asText("").isBlank() ? " — " + txt(n, "nombre") : "")
           .append("\n  📍 ")
-          .append(txt(n, "direccion"))
-          .append("\n  📦 Capacidad: ")
-          .append(n.path("capacidadMaxima").asInt(0));
+          .append(txt(n, "direccion"));
+      if (n.path("stockActual").isNumber()) {
+        sb.append("\n  📦 Stock: ")
+            .append(n.path("stockActual").asInt(0))
+            .append(" de ")
+            .append(capacidad)
+            .append(" unidades");
+      } else {
+        sb.append("\n  📦 Capacidad: ").append(capacidad);
+      }
+      if (!n.path("algoritmo").asText("").isBlank()) {
+        sb.append("\n  ⚙️ ").append(nombreDelAlgoritmo(n.path("algoritmo").asText("")));
+      }
     }
     return sb.toString();
+  }
+
+  /** Logística escribe distinto el mismo algoritmo según el endpoint: acá se muestran igual. */
+  private static String nombreDelAlgoritmo(String algoritmo) {
+    return switch (algoritmo.toUpperCase().replaceAll("[^A-Z]", "")) {
+      case "SUBATENDIDOS" -> "Sub-atendidos";
+      case "PRIOSCORE", "PRIORIDADPORSCORE" -> "Prioridad por score";
+      case "NULL" -> "Sin algoritmo configurado";
+      default -> esc(algoritmo);
+    };
+  }
+
+  /** El stock de un producto en cada depósito, como lo devuelve {@code /stock/{id}/detalle}. */
+  static String stockPorDeposito(String productoId, String json) {
+    JsonNode n = parsear(json);
+    if (n == null || !n.isObject()) {
+      return json;
+    }
+    JsonNode depositos = n.path("depositos");
+    StringBuilder sb =
+        new StringBuilder("📦 <b>Stock del producto nº " + esc(productoId) + "</b>\n");
+    if (!depositos.isArray() || depositos.isEmpty()) {
+      return sb.append("\nNo hay unidades guardadas de ese producto en ningún depósito.").toString();
+    }
+    for (JsonNode d : depositos) {
+      sb.append("\n• ")
+          .append(esc(primero(d, "depositoid", "depositoID")))
+          .append(" · ")
+          .append(d.path("disponibleEnDeposito").asInt(0))
+          .append(" unidades");
+    }
+    return sb.append("\n\nTotal: <b>")
+        .append(n.path("totalDisponible").asInt(0))
+        .append("</b> unidades")
+        .toString();
+  }
+
+  /** Cuántos paquetes pendientes se listan como mucho, para que el mensaje entre en Telegram. */
+  private static final int PAQUETES_A_MOSTRAR = 25;
+
+  /**
+   * Los paquetes armados que esperan la entrega.
+   *
+   * <p>Los campos vienen en minúscula ({@code paqueteid}, {@code necesidadid}) aunque el Swagger de
+   * Logística los declare en camelCase: se leen los dos.
+   */
+  static String listaAsignaciones(String json) {
+    JsonNode arr = parsear(json);
+    if (arr == null || !arr.isArray()) {
+      return json;
+    }
+    if (arr.isEmpty()) {
+      return "No hay paquetes pendientes de entrega.";
+    }
+    StringBuilder sb =
+        new StringBuilder("📦 <b>Paquetes pendientes de entrega</b> (" + arr.size() + ")\n");
+    int mostrados = 0;
+    for (JsonNode a : arr) {
+      if (mostrados++ >= PAQUETES_A_MOSTRAR) {
+        sb.append("\n… y ").append(arr.size() - PAQUETES_A_MOSTRAR).append(" más");
+        break;
+      }
+      sb.append("\n• <b>")
+          .append(esc(primero(a, "paqueteid", "paqueteID")))
+          .append("</b> → necesidad nº ")
+          .append(esc(primero(a, "necesidadid", "necesidadID")))
+          .append("\n  ")
+          .append(a.path("cantidad").asInt(0))
+          .append(" unidades del producto nº ")
+          .append(esc(primero(a, "productoid", "productoID")))
+          .append(" · ")
+          .append(origenCorto(a.path("origen").asText("")));
+    }
+    return sb.append("\n\n/paquete muestra uno en detalle.").toString();
+  }
+
+  /** Un paquete, como lo devuelve {@code /api/asignaciones/paquetes/{id}}. */
+  static String asignacion(String json) {
+    JsonNode a = parsear(json);
+    if (a == null || !a.isObject()) {
+      return json;
+    }
+    String estado = a.path("estado").asText("").toUpperCase();
+    String donacion = primero(a, "donacionid", "donacionID");
+    String fecha = a.path("fecha").asText("");
+    return "📦 <b>Paquete "
+        + esc(primero(a, "paqueteid", "paqueteID"))
+        + "</b>\n"
+        + switch (estado) {
+          case "ASIGNADA" -> "⏳ Asignado, pendiente de entrega";
+          case "COMPLETADA" -> "✅ Entregado";
+          default -> "• " + esc(estado);
+        }
+        + "\n\n"
+        + a.path("cantidad").asInt(0)
+        + " unidades del producto nº "
+        + esc(primero(a, "productoid", "productoID"))
+        + " para la necesidad nº "
+        + esc(primero(a, "necesidadid", "necesidadID"))
+        + "\n"
+        + (donacion.isBlank() ? "🏬 Sin donación: salió del stock" : "🎁 Donación nº " + esc(donacion))
+        + "\n🔀 Asignado "
+        + origenLargo(a.path("origen").asText(""))
+        + (fecha.length() >= 16 ? "\n📅 " + esc(fecha.substring(0, 16).replace('T', ' ')) : "");
+  }
+
+  private static String origenCorto(String origen) {
+    return switch (origen.toUpperCase()) {
+      case "MATCHMAKING" -> "matchmaking";
+      case "SOLICITUD_DONADORES" -> "solicitud";
+      default -> esc(origen.toLowerCase());
+    };
+  }
+
+  /** Los dos orígenes que conoce Logística: quien lo usa para algo es Incentivos. */
+  private static String origenLargo(String origen) {
+    return switch (origen.toUpperCase()) {
+      case "MATCHMAKING" -> "por matchmaking, al donar";
+      case "SOLICITUD_DONADORES" -> "al crear la necesidad, con stock que ya había";
+      default -> esc(origen);
+    };
   }
 
   static String stock(String productoId, String json) {
@@ -361,7 +642,55 @@ final class Formato {
     return sb.toString();
   }
 
+  /**
+   * Las insignias y la misión en curso de un donador.
+   *
+   * @param misionJson null si no tiene misión: Incentivos lo dice con un 404
+   */
+  static String progreso(String donadorId, String insigniasJson, String misionJson) {
+    StringBuilder sb =
+        new StringBuilder("🏅 <b>Progreso del donador nº " + esc(donadorId) + "</b>\n\n");
+    JsonNode insignias = parsear(insigniasJson);
+    if (insignias == null || !insignias.isArray()) {
+      sb.append("⚠️ No pude leer las insignias.");
+    } else if (insignias.isEmpty()) {
+      sb.append("✨ Todavía no ganó ninguna insignia.");
+    } else {
+      sb.append("✨ Insignias (").append(insignias.size()).append(")");
+      for (JsonNode i : insignias) {
+        // Incentivos devuelve las insignias enteras; si alguna vez fueran solo los ids, también.
+        String nombre = i.isTextual() ? esc(i.asText()) : txt(i, "nombre");
+        sb.append("\n   • ").append("—".equals(nombre) ? txt(i, "id") : nombre);
+      }
+    }
+    JsonNode mision = misionJson == null ? null : parsear(misionJson);
+    if (mision == null || !mision.isObject()) {
+      return sb.append("\n\n🎯 Sin misión en curso.").toString();
+    }
+    String nombre = txt(mision, "nombre");
+    return sb.append("\n\n🎯 Misión en curso: <b>")
+        .append("—".equals(nombre) ? txt(mision, "id") : nombre)
+        .append("</b>\n   de ")
+        .append(capitalizar(mision.path("categoriaInicio").asText("")))
+        .append(" a ")
+        .append(capitalizar(mision.path("categoriaFin").asText("")))
+        .append(" · otorga la insignia ")
+        .append(txt(mision, "insigniaID"))
+        .toString();
+  }
+
   // ── Piezas ─────────────────────────────────────────────────────────────────
+
+  /** Logística devuelve los campos en minúscula aunque su Swagger los declare en camelCase. */
+  private static String primero(JsonNode nodo, String... campos) {
+    for (String campo : campos) {
+      String valor = nodo.path(campo).asText("");
+      if (!valor.isBlank() && !"null".equals(valor)) {
+        return valor;
+      }
+    }
+    return "";
+  }
 
   /**
    * Lee un campo y lo deja listo para meter en el HTML del mensaje.

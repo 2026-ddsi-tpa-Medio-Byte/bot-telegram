@@ -121,6 +121,87 @@ class Formularios {
         Campo.texto("¿Correo de contacto?"));
   }
 
+  /** Todos los datos menos el número se pueden dejar como están contestando un guion. */
+  Formulario editarEntidad() {
+    return new Formulario(
+        "Cambiar los datos de una entidad",
+        r -> editarEntidad(r.get(0), r.get(1), r.get(2), r.get(3), r.get(4)),
+        Campo.numero("¿Qué entidad? Pasame su número").conAyuda(this::listaEntidades),
+        Campo.texto("¿Cómo se llama?").oSinCambios(),
+        Campo.texto("¿Dónde queda?").oSinCambios(),
+        Campo.texto("¿Teléfono?").oSinCambios(),
+        Campo.texto("¿Correo de contacto?").oSinCambios());
+  }
+
+  /**
+   * Lo que hacen el formulario y el atajo en una línea. Un guion viaja como null, que es como
+   * Donadores entiende «no lo toques»: no hace falta leer la entidad antes.
+   */
+  String editarEntidad(
+      String id, String razonSocial, String domicilio, String telefono, String correo) {
+    String json =
+        donadores.editarEntidadRaw(
+            id, sinCambios(razonSocial), sinCambios(domicilio), sinCambios(telefono),
+            sinCambios(correo));
+    return "✅ Entidad actualizada\n\n" + Formato.entidad(json);
+  }
+
+  Formulario modificarNecesidad() {
+    return new Formulario(
+        "Cambiar una necesidad",
+        r -> modificarNecesidad(r.get(0), r.get(3), r.get(2), r.get(1), r.get(4), r.get(5)),
+        Campo.numero("¿Qué necesidad? Pasame su número"),
+        Campo.numero("¿Cuántas unidades hacen falta en total?").oSinCambios(),
+        Campo.texto("¿Para qué es?").oSinCambios(),
+        Campo.numero("¿Qué tan urgente es, del 1 al 10?").oSinCambios(),
+        Campo.numero("¿Qué producto necesita?").conAyuda(this::catalogo).oSinCambios(),
+        Campo.opcion("¿Qué tipo de necesidad es?", "EXTRAORDINARIA", "RECURRENTE").oSinCambios());
+  }
+
+  /**
+   * Lo que hacen el formulario y el atajo en una línea, en el orden del atajo. Si el objetivo baja
+   * de lo ya cubierto lo rechaza Donadores, con su motivo.
+   */
+  String modificarNecesidad(
+      String id,
+      String urgencia,
+      String descripcion,
+      String cantidadObjetivo,
+      String productoId,
+      String tipo) {
+    String tipoElegido = sinCambios(tipo);
+    String json =
+        donadores.modificarNecesidadRaw(
+            id,
+            numeroOSinCambios(urgencia),
+            sinCambios(descripcion),
+            numeroOSinCambios(cantidadObjetivo),
+            sinCambios(productoId),
+            tipoElegido == null ? null : tipoElegido.toUpperCase());
+    return "✅ Necesidad actualizada\n\n" + Formato.necesidad(json);
+  }
+
+  /** null si la respuesta fue «dejarlo como está». */
+  private static String sinCambios(String respuesta) {
+    return respuesta == null || Formulario.SIN_CAMBIOS.equals(respuesta.trim())
+        ? null
+        : respuesta.trim();
+  }
+
+  private static Integer numeroOSinCambios(String respuesta) {
+    String valor = sinCambios(respuesta);
+    return valor == null ? null : numero(valor);
+  }
+
+  /** El atajo en una línea no pasa por la validación del formulario: el error se explica igual. */
+  private static int numero(String texto) {
+    try {
+      return Integer.parseInt(texto.trim());
+    } catch (NumberFormatException e) {
+      throw new RuntimeException("«" + Formato.esc(texto) + "» no es un número.");
+    }
+  }
+
   Formulario necesidad() {
     return new Formulario(
         "Nueva necesidad",
@@ -251,11 +332,18 @@ class Formularios {
   Formulario producto() {
     return new Formulario(
         "Nuevo producto donable",
-        r -> "📦 Producto creado:\n" + donaciones.crearProducto(r.get(0), r.get(1), r.get(2), r.get(3)),
+        r -> crearProducto(r.get(0), r.get(1), r.get(2), r.get(3)),
         Campo.texto("¿Cómo se llama el producto?"),
         Campo.texto("Describilo (con código de barras hacen falta al menos tres palabras)"),
         Campo.texto("¿De qué categoría es? Por ejemplo alimentos o abrigo"),
         Campo.numero("¿Con qué identificador? Pasame su número").conAyuda(this::identificadores));
+  }
+
+  /** Lo que hacen el formulario y el atajo en una línea: los dos terminan acá. */
+  String crearProducto(String nombre, String descripcion, String categoria, String identificador) {
+    return "✅ Producto creado\n\n"
+        + Formato.producto(donaciones.crearProducto(nombre, descripcion, categoria, identificador))
+        + "\n\nYa se puede donar y pedir en una necesidad.";
   }
 
   Formulario deposito() {
@@ -306,6 +394,39 @@ class Formularios {
         Campo.texto("¿Qué insignia otorga? Pasame su identificador").conAyuda(this::listaInsignias),
         Campo.texto("¿Desde qué categoría arranca?"),
         Campo.texto("¿A qué categoría lleva?"));
+  }
+
+  // ── Consultas sin número ───────────────────────────────────────────────────
+
+  /**
+   * Una consulta a la que le faltó el dato: pregunta solo eso y contesta lo mismo que si hubiera
+   * venido escrito, porque las dos formas terminan en la misma consulta.
+   */
+  static Formulario consulta(
+      String titulo, Campo campo, java.util.function.Function<String, String> consulta) {
+    return new Formulario(titulo, r -> consulta.apply(r.get(0)), campo);
+  }
+
+  Campo cualDonador() {
+    return Campo.numero("¿Qué número de donador?").conAyuda(this::listaDonadores);
+  }
+
+  Campo cualEntidad() {
+    return Campo.numero("¿Qué número de entidad?").conAyuda(this::listaEntidades);
+  }
+
+  Campo cualProducto() {
+    return Campo.numero("¿De qué producto? Pasame su número").conAyuda(this::catalogo);
+  }
+
+  /** «Todas» o el número de un donador: preguntarlo en dos pasos sería una pregunta de más. */
+  Campo deQuien() {
+    return new Campo(
+            "¿De todos o de un donador? Escribí todas, o el número del donador.",
+            t -> Consultas.sonTodas(t) || t.trim().matches("\\d+"),
+            "Tiene que ser «todas» o el número de un donador.",
+            null)
+        .conAyuda(this::listaDonadores);
   }
 
   // ── Listados para no tener que irse a buscar un número ─────────────────────

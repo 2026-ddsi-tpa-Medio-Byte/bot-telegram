@@ -9,8 +9,8 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 /**
- * Cliente HTTP hacia el módulo "Donadores y Entidades". Devuelve texto listo para mostrar en el
- * bot; ante errores lanza RuntimeException con un mensaje amigable (el bot lo captura).
+ * Cliente HTTP hacia el módulo "Donadores y Entidades". Devuelve el JSON del módulo, que formatea
+ * {@link Formato}; ante errores lanza RuntimeException con un mensaje amigable (el bot lo captura).
  */
 @Component
 public class DonadoresApiClient {
@@ -25,20 +25,12 @@ public class DonadoresApiClient {
   }
 
   // ── Donadores ───────────────────────────────────────────────────────────────
+  //
+  // Las altas y cambios devuelven el JSON tal cual lo manda Donadores. Hubo versiones que le
+  // anteponían un texto («Donador registrado: {...}») y no quedó ninguna: leerle el id a eso cortó
+  // /preparar la noche antes de una demo.
 
-  public String registrarDonador(
-      String nombre, String apellido, int edad, String email, String documento, String domicilio) {
-    Map<String, Object> body = new LinkedHashMap<>();
-    body.put("nombre", nombre);
-    body.put("apellido", apellido);
-    body.put("edad", edad);
-    body.put("email", email);
-    body.put("nroDocumento", documento);
-    body.put("domicilio", domicilio);
-    return post("/donadores", body, "Donador registrado");
-  }
-
-  /** Igual que el anterior pero devuelve el JSON tal cual, para poder formatearlo o leerle el id. */
+  /** Devuelve el JSON tal cual, para poder formatearlo o leerle el id. */
   public String registrarDonadorRaw(
       String nombre, String apellido, int edad, String email, String documento, String domicilio) {
     Map<String, Object> body = new LinkedHashMap<>();
@@ -81,22 +73,12 @@ public class DonadoresApiClient {
 
   // ── Entidades ────────────────────────────────────────────────────────────────
 
-  public String crearEntidad(String razonSocial, String domicilio, String telefono, String correo) {
-    return post("/entidades", cuerpoEntidad(razonSocial, domicilio, telefono, correo),
-        "Entidad creada");
-  }
-
   public String crearEntidadRaw(
       String razonSocial, String domicilio, String telefono, String correo) {
     return postRaw("/entidades", cuerpoEntidad(razonSocial, domicilio, telefono, correo));
   }
 
-  public String editarEntidad(
-      String id, String razonSocial, String domicilio, String telefono, String correo) {
-    return put("/entidades/" + id, cuerpoEntidad(razonSocial, domicilio, telefono, correo),
-        "Entidad actualizada");
-  }
-
+  /** Un dato en null queda como está: Donadores solo pisa los que llegan con valor. */
   public String editarEntidadRaw(
       String id, String razonSocial, String domicilio, String telefono, String correo) {
     return putRaw("/entidades/" + id, cuerpoEntidad(razonSocial, domicilio, telefono, correo));
@@ -122,19 +104,6 @@ public class DonadoresApiClient {
 
   // ── Necesidades ──────────────────────────────────────────────────────────────
 
-  public String altaNecesidad(
-      String entidadID,
-      int urgencia,
-      String descripcion,
-      int cantidadObjetivo,
-      String productoID,
-      String tipo) {
-    return post(
-        "/necesidades",
-        cuerpoNecesidad(entidadID, urgencia, descripcion, cantidadObjetivo, productoID, tipo),
-        "Necesidad creada");
-  }
-
   public String altaNecesidadRaw(
       String entidadID,
       int urgencia,
@@ -147,11 +116,15 @@ public class DonadoresApiClient {
         cuerpoNecesidad(entidadID, urgencia, descripcion, cantidadObjetivo, productoID, tipo));
   }
 
+  /**
+   * Un dato en null queda como está: Donadores solo pisa los que llegan con valor, y valida el
+   * objetivo y el producto solo si cambian. Así el cambio guiado no obliga a reescribir todo.
+   */
   public String modificarNecesidadRaw(
       String id,
-      int urgencia,
+      Integer urgencia,
       String descripcion,
-      int cantidadObjetivo,
+      Integer cantidadObjetivo,
       String productoID,
       String tipo) {
     return putRaw(
@@ -161,9 +134,9 @@ public class DonadoresApiClient {
 
   private Map<String, Object> cuerpoNecesidad(
       String entidadID,
-      int urgencia,
+      Integer urgencia,
       String descripcion,
-      int cantidadObjetivo,
+      Integer cantidadObjetivo,
       String productoID,
       String tipo) {
     Map<String, Object> body = new LinkedHashMap<>();
@@ -199,22 +172,6 @@ public class DonadoresApiClient {
     return get("/necesidades/" + id);
   }
 
-  public String modificarNecesidad(
-      String id,
-      int urgencia,
-      String descripcion,
-      int cantidadObjetivo,
-      String productoID,
-      String tipo) {
-    Map<String, Object> body = new LinkedHashMap<>();
-    body.put("nivelDeUrgencia", urgencia);
-    body.put("descripcion", descripcion);
-    body.put("cantidadObjetivo", cantidadObjetivo);
-    body.put("productoSolicitadoID", productoID);
-    body.put("tipo", tipo);
-    return put("/necesidades/" + id, body, "Necesidad actualizada");
-  }
-
   public String borrarNecesidad(String id) {
     delete("/necesidades/" + id);
     return "Necesidad " + id + " eliminada";
@@ -230,10 +187,6 @@ public class DonadoresApiClient {
     } catch (ResourceAccessException e) {
       throw new RuntimeException(sinConexion());
     }
-  }
-
-  private String post(String path, Object body, String okMsg) {
-    return okMsg + ": " + postRaw(path, body);
   }
 
   /** Devuelve el JSON sin adornos, para poder formatearlo o leerle el id. */
@@ -277,22 +230,6 @@ public class DonadoresApiClient {
     }
   }
 
-  private String put(String path, Object body, String okMsg) {
-    try {
-      org.springframework.http.ResponseEntity<String> resp =
-          rest.exchange(
-              baseUrl + path,
-              org.springframework.http.HttpMethod.PUT,
-              new org.springframework.http.HttpEntity<>(body),
-              String.class);
-      return okMsg + ": " + resp.getBody();
-    } catch (HttpStatusCodeException e) {
-      throw new RuntimeException(traducir(e));
-    } catch (ResourceAccessException e) {
-      throw new RuntimeException(sinConexion());
-    }
-  }
-
   private void delete(String path) {
     try {
       rest.delete(baseUrl + path);
@@ -319,9 +256,10 @@ public class DonadoresApiClient {
     if (codigo == 409) {
       return "No se pudo: "
           + Formato.esc(motivo)
+          // Sin ofrecer /donadores: la lista de donadores, con sus datos, es solo para el admin.
           + (motivo.contains("donador")
               ? "\n\nSi ya estabas registrado no hace falta hacerlo de nuevo: entrá con /entrar y "
-                  + "tu número (/donadores los lista)."
+                  + "tu número."
               : "");
     }
     return "Solicitud rechazada (" + codigo + "): " + Formato.esc(motivo);

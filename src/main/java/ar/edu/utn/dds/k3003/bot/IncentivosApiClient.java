@@ -40,8 +40,21 @@ public class IncentivosApiClient {
     return post("/donadores/" + donadorId.trim() + "/procesar", null);
   }
 
+  /**
+   * Las insignias que ganó un donador.
+   *
+   * <p>Un 404 es una respuesta y no un error: Incentivos dice así que no tiene ninguna. Es el mismo
+   * criterio con el que lo lee Donadores en su IncentivosHttpClient.
+   */
   public String insigniasDe(String donadorId) {
-    return get("/donadores/" + donadorId.trim() + "/insignias");
+    String json = getSiExiste("/donadores/" + donadorId.trim() + "/insignias");
+    return json == null || json.isBlank() ? "[]" : json;
+  }
+
+  /** La misión que tiene en curso un donador, o null si no tiene: Incentivos contesta 404. */
+  public String misionActual(String donadorId) {
+    String json = getSiExiste("/donadores/" + donadorId.trim() + "/mision-actual");
+    return json == null || json.isBlank() ? null : json;
   }
 
   public String crearInsignia(String id, String nombre, String descripcion) {
@@ -82,6 +95,20 @@ public class IncentivosApiClient {
     try {
       return Reintento.siNoResponde(() -> rest.getForObject(baseUrl + path, String.class));
     } catch (HttpStatusCodeException e) {
+      throw new RuntimeException(traducir(e));
+    } catch (ResourceAccessException e) {
+      throw new RuntimeException(sinConexion());
+    }
+  }
+
+  /** Como {@link #get}, pero un 404 devuelve null en vez de lanzar. */
+  private String getSiExiste(String path) {
+    try {
+      return Reintento.siNoResponde(() -> rest.getForObject(baseUrl + path, String.class));
+    } catch (HttpStatusCodeException e) {
+      if (e.getStatusCode().value() == 404) {
+        return null;
+      }
       throw new RuntimeException(traducir(e));
     } catch (ResourceAccessException e) {
       throw new RuntimeException(sinConexion());

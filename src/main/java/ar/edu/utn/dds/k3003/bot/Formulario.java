@@ -21,6 +21,9 @@ import java.util.function.Supplier;
  */
 class Formulario {
 
+  /** La respuesta que deja un dato como está, en los formularios de cambios. */
+  static final String SIN_CAMBIOS = "-";
+
   /** Lo que se hace cuando están todas las respuestas. */
   @FunctionalInterface
   interface Accion {
@@ -81,6 +84,20 @@ class Formulario {
       return new Campo(pregunta, acepta, siNoSirve, sugerencias);
     }
 
+    /**
+     * El mismo campo, aceptando además {@link #SIN_CAMBIOS} para dejar el dato como está.
+     *
+     * <p>Para los cambios: sin esto, corregir el teléfono de una entidad obligaba a reescribir el
+     * nombre, el domicilio y el correo.
+     */
+    Campo oSinCambios() {
+      return new Campo(
+          pregunta + " (- para dejarlo como está)",
+          t -> SIN_CAMBIOS.equals(t.trim()) || acepta.test(t),
+          siNoSirve + " O un - para dejarlo como está.",
+          sugerencias);
+    }
+
     private static boolean esEntero(String t) {
       try {
         Integer.parseInt(t.trim());
@@ -104,6 +121,10 @@ class Formulario {
   }
 
   String primeraPregunta() {
+    if (campos.size() == 1) {
+      // Una consulta sin número pregunta una sola cosa: «de a una» y «1 de 1» sobran.
+      return "🔎 <b>" + titulo + "</b>\n" + pregunta(0) + "\n\n/cancelar para dejarlo.";
+    }
     return "📝 <b>" + titulo + "</b>\nTe voy preguntando de a una. /cancelar para dejarlo.\n\n"
         + pregunta(0);
   }
@@ -178,6 +199,8 @@ class Formulario {
         // persona de todos modos.
       }
     }
-    return "<b>" + (indice + 1) + " de " + campos.size() + "</b> · " + campo.pregunta() + ayuda;
+    String cuenta =
+        campos.size() == 1 ? "" : "<b>" + (indice + 1) + " de " + campos.size() + "</b> · ";
+    return cuenta + campo.pregunta() + ayuda;
   }
 }

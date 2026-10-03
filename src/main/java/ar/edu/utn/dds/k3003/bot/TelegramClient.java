@@ -40,9 +40,47 @@ public class TelegramClient {
       JsonNode root = mapper.readTree(resp);
       return root.path("result");
     } catch (Exception e) {
-      log.warn("Error en getUpdates: {}", e.getMessage());
+      log.warn("Error en getUpdates: {}", sinToken(e.getMessage()));
       return null;
     }
+  }
+
+  /**
+   * Borra un mensaje del chat. Lo usa el ingreso de admin para que la contraseña no quede a la
+   * vista en el celular.
+   *
+   * <p>Nunca lanza: si no se pudo borrar, quien llama sigue y le pide a la persona que lo borre a
+   * mano. El log no lleva el texto del mensaje, que es justamente la contraseña.
+   *
+   * @return si Telegram confirmó el borrado
+   */
+  public boolean deleteMessage(long chatId, long messageId) {
+    if (messageId <= 0) {
+      return false;
+    }
+    try {
+      String resp =
+          rest.postForObject(
+              apiBase() + "/deleteMessage",
+              Map.of("chat_id", chatId, "message_id", messageId),
+              String.class);
+      return resp != null && mapper.readTree(resp).path("ok").asBoolean(false);
+    } catch (Exception e) {
+      log.warn(
+          "No se pudo borrar el mensaje {} del chat {}: {}",
+          messageId,
+          chatId,
+          sinToken(e.getMessage()));
+      return false;
+    }
+  }
+
+  /**
+   * El mensaje de error de una llamada que no llegó trae la URL, y la URL trae el token del bot.
+   * Los logs pueden terminar en Datadog: el token no tiene que llegar ahí.
+   */
+  private String sinToken(String mensaje) {
+    return mensaje == null || !hayToken() ? mensaje : mensaje.replace(token, "<token>");
   }
 
   /**
@@ -56,10 +94,28 @@ public class TelegramClient {
    * sin formato: mejor un mensaje feo que ningún mensaje.
    */
   public void sendMessage(long chatId, String text) {
-    if (enviar(chatId, text, true)) {
+    String entra = recortado(text);
+    if (enviar(chatId, entra, true)) {
       return;
     }
-    enviar(chatId, sinEtiquetas(text), false);
+    enviar(chatId, sinEtiquetas(entra), false);
+  }
+
+  /** Lo que Telegram acepta en un mensaje: lo que pasa de ahí lo rechaza entero. */
+  static final int LARGO_MAXIMO = 4096;
+
+  /**
+   * Un listado largo —todas las donaciones, por ejemplo— no puede hacer que el mensaje no llegue.
+   * Se corta en un salto de línea para no partir una etiqueta {@code <b>} por la mitad, que haría
+   * rechazar el HTML.
+   */
+  static String recortado(String text) {
+    if (text == null || text.length() <= LARGO_MAXIMO) {
+      return text;
+    }
+    String aviso = "\n… (el resto no entra en un mensaje)";
+    int corte = text.lastIndexOf('\n', LARGO_MAXIMO - aviso.length());
+    return text.substring(0, corte > 0 ? corte : LARGO_MAXIMO - aviso.length()) + aviso;
   }
 
   private boolean enviar(long chatId, String text, boolean conFormato) {
@@ -75,7 +131,7 @@ public class TelegramClient {
       if (conFormato) {
         log.debug("HTML rechazado para el chat {}, reintento sin formato", chatId);
       } else {
-        log.warn("Error al enviar mensaje a chat {}: {}", chatId, e.getMessage());
+        log.warn("Error al enviar mensaje a chat {}: {}", chatId, sinToken(e.getMessage()));
       }
       return false;
     }
